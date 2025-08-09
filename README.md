@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="https://sammyhamwi.ai/images/PromptSphere-1000px.png" alt="PromptSphere Logo" width="480" height="80">
+  <img src="https://sammyhamwi.ai/images/PromptSphere-1000px.png" alt="PromptSphere Logo" width="400" height="400">
 </p>
 
 <p align="center">
-  Your centralized hub for mastering LLM prompt and context engineering.
+  Master your usage of LLMs through PromptSphere toolkits and resources developed to help you maximize prompt and context engineering
 </p>
 
 <div align="center">
@@ -56,5 +56,6 @@ PromptSphere's goal is to be a community-driven, open-source initiative, and con
 - Provide feedback and suggestions to help shape the direction of this project.
 
 ---
+
 
 PromptSphere is just getting started. Join me on this journey to build the ultimate toolkit for LLM prompting and context creation!
