@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://sammyhamwi.ai/images/logo-placeholder.png" alt="LekkerPrompt Placeholder Logo - TBD" width="400" height="500">
+  <img src="https://sammyhamwi.ai/images/logo-placeholder-temp.png" alt="LekkerPrompt Placeholder Logo - TBD" width="400" height="500">
 </p>
 
 <p align="center">
@@ -69,6 +69,7 @@ To show LekkerPrompt's support and appreciation for contributors, **all** will b
 
 
 LekkerPrompt is just getting started. Join me on this journey to build the ultimate toolkit for LLM prompting and context creation!
+
 
 
 
