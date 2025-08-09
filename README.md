@@ -23,7 +23,7 @@ My mission with LekkerPrompt is to create a comprehensive set of open-source too
 
 ## 🚀 What's Inside?
 
-### 🛠 **LekkerPrompt - [🔗Copilot Prompt Builder](https://github.com/sammyhamwi/LekkerPrompt/copilot-prompt-builder)**
+### 🛠 **LekkerPrompt - [🔗Copilot Prompt Builder](https://github.com/sammyhamwi/LekkerPrompt/promptcrafter)**
 
 #### The first ready-to-use [GitHub Copilot Spaces](https://github.com/copilot/spaces) toolkit that creates a LLM chat experience focused soley on prompt building and enhancing.
 
@@ -69,6 +69,7 @@ To show LekkerPrompt's support and appreciation for contributors, **all** will b
 
 
 LekkerPrompt is just getting started. Join me on this journey to build the ultimate toolkit for LLM prompting and context creation!
+
 
 
 
