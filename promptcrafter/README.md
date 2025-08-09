@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://sammyhamwi.ai/images/logo-placeholder.png" alt="LekkerPrompt Logo" width="400" height="500">
+  <img src="https://sammyhamwi.ai/images/logo-placeholder-temp.png" alt="LekkerPrompt Logo" width="400" height="500">
 </p>
 
 <p align="center">
@@ -17,5 +17,6 @@
 ### Compatibility
 
 Currently, LekkerPrompt's Prompt Crafter is only compatible with GitHub Copilot Space.
+
 
 ---
