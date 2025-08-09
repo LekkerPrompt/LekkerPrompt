@@ -56,7 +56,7 @@ LekkerPrompt is building toward a robust, community-driven resource library for 
 ```
 /
 ├── lekker-toolkits/                # All LekkerPrompt-developed toolkits
-│    └── copilot-prompt-builder/    #
+│    └── promptcrafter/             #
 ├── lekker-guides/                  # Original guides and documentation by LekkerPrompt
 ├── external-guides/                # Curated markdown files linking to/summarizing third-party resources
 ```
