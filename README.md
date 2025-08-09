@@ -23,7 +23,7 @@ My mission with LekkerPrompt is to create a comprehensive set of open-source too
 
 ## 🚀 What's Inside?
 
-### 🛠 **LekkerPrompt - [🔗Copilot Prompt Builder](https://github.com/sammyhamwi/LekkerPrompt/promptcrafter)**
+### 🛠 **LekkerPrompt - [🔗Copilot Prompt Builder](https://github.com/sammyhamwi/LekkerPrompt/tree/master/promptcrafter)**
 
 #### The first ready-to-use [GitHub Copilot Spaces](https://github.com/copilot/spaces) toolkit that creates a LLM chat experience focused soley on prompt building and enhancing.
 
@@ -41,7 +41,7 @@ Additional toolkits are planned for future releases, including a curated collect
 ## ✨ Getting Started
 
 1. **Explore Prompt Crafter and Set-Up Your Copilot Space**:
-  - Open the [🔗promptcrafter/](https://github.com/sammyhamwi/LekkerPrompt/promptcrafter) directory to find a [🔗README.md](https://github.com/sammyhamwi/LekkerPrompt/promptcrafter/README.md) file to learn even more about the toolkit and how to set it up in your own Copilot Space envirnoment.
+  - Open the [🔗promptcrafter/](https://github.com/sammyhamwi/LekkerPrompt/tree/master/promptcrafter) directory to find a [🔗README.md](https://github.com/sammyhamwi/LekkerPrompt/tree/master/promptcrafter/README.md) file to learn even more about the toolkit and how to set it up in your own Copilot Space envirnoment.
 3. **Learn and Enhance**: Use the materials in the LekkerPrompt resource library to improve your prompt and context engineering skills.
 4. **Stay Updated**: Follow and star the repository for updates as new toolkits are added to LekkerPrompt. _It would also mean a lot to a new open-sourcer <3_
 
@@ -69,6 +69,7 @@ To show LekkerPrompt's support and appreciation for contributors, **all** will b
 
 
 LekkerPrompt is just getting started. Join me on this journey to build the ultimate toolkit for LLM prompting and context creation!
+
 
 
 
