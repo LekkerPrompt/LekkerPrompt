@@ -1,77 +1,98 @@
 <p align="center">
-  <img src="https://sammyhamwi.ai/images/logo-placeholder-temp.png" alt="LekkerPrompt Placeholder Logo - TBD" width="400" height="500">
+  <img src="https://sammyhamwi.ai/images/LekkerPrompt-logo-lrg.png" alt="LekkerPrompt Logo" width="400" height="400">
 </p>
 
 <p align="center">
-  Master your usage of LLMs through LekkerPrompt toolkits and resources developed to help you maximize prompt and context engineering
+  Master LLM interaction with LekkerPrompt <br> An open source library of toolkits and resources for advanced prompt and context engineering.
 </p>
 
 <div align="center">
-  <a href="https://github.com/sammyhamwi/LekkerPrompt">Home</a> | <a href="https://github.com/sammyhamwi/LekkerPrompt/issues">Report Issue</a>
+  <a href="https://github.com/sammyhamwi/LekkerPrompt">Home</a> | <a href="https://github.com/sammyhamwi/LekkerPrompt/issues">Report an Issue</a>
 </div>
 
 ---
 
-## 🛠 LekkerPrompt: Early Days
+## About LekkerPrompt
 
-Welcome to **LekkerPrompt**, a growing repository dedicated to advancing prompt and context engineering for Large Language Models (LLMs). As this project is still in its early stages, it currently features the first toolkit, **PromptForge**, with more to come.
+Welcome to **LekkerPrompt**, a growing open source repository dedicated to advancing the use of prompt and context engineering for Large Language Models (LLMs).
 
-### 🌟 Vision
-My mission with LekkerPrompt is to create a comprehensive set of open-source toolkits that help developers, creators, and AI enthusiasts to create properly structured and contextualized prompts to enhance their interactions with LLMs like GitHub Copilot.
-
----
-
-## 🚀 What's Inside?
-
-### 🛠 **LekkerPrompt - [🔗Copilot Prompt Builder](https://github.com/sammyhamwi/LekkerPrompt/tree/master/promptcrafter)**
-
-#### The first ready-to-use [GitHub Copilot Spaces](https://github.com/copilot/spaces) toolkit that creates a LLM chat experience focused soley on prompt building and enhancing.
-
-LekkerPrompt's Copilot Prompt Builder focuses on creating and enhancing prompts specifically within GitHub Copilot Spaces.
-- Link to Copilot Spaces (In preview mode as of `09 Aug 2024`): [🔗Link](https://github.com/copilot/spaces)
-
-### 
-- **Contextual References**: Carefully curated markdown formatted .md files providing structured insights for prompt development.
-- **Global Instructions**: Configuration file for optimizing Copilot Spaces, enabling streamlined workflows and productive interactions.
-
-Additional toolkits are planned for future releases, including a curated collection of high-quality prompts and templates.
+LekkerPrompt's goal is to create a comprehensive suite of open source toolkits and resources that help developers, creators, and AI enthusiasts to craft exceptionally structured and contextualized prompts and LLM context. By enhancing your interactions with LLMs like GitHub Copilot _(but not limited to)_, LekkerPrompt helps you unlock their full potential.
 
 ---
 
-## ✨ Getting Started
+## Featured LekkerPrompt Toolkit
 
-1. **Explore Prompt Crafter and Set-Up Your Copilot Space**:
-  - Open the [🔗promptcrafter/](https://github.com/sammyhamwi/LekkerPrompt/tree/master/promptcrafter) directory to find a [🔗README.md](https://github.com/sammyhamwi/LekkerPrompt/tree/master/promptcrafter/README.md) file to learn even more about the toolkit and how to set it up in your own Copilot Space envirnoment.
-3. **Learn and Enhance**: Use the materials in the LekkerPrompt resource library to improve your prompt and context engineering skills.
-4. **Stay Updated**: Follow and star the repository for updates as new toolkits are added to LekkerPrompt. _It would also mean a lot to a new open-sourcer <3_
+### **PromptCrafter**
+
+The **PromptCrafter** is the **first** featured toolkit in the LekkerPrompt launch, and is currently in active development to refine its capabilities and user experience. It is designed with prompt engineering techniques to provide a specialized [GitHub Copilot Space](https://github.com/copilot/spaces) for efficient, focused prompt building and enhancement.
+
+#### **Key Features:**
+1. **Contextual References:** 
+  - A curated collection of Markdown (`.md`) files that offer structured examples, templates, and guidance for effective prompt development.
+2. **Global Instructions:** 
+  - Optimized Copilot Space instructions in markdown format, streamlining your workflow with intelligent, productive LLM interactions. Within the PromptCrafter space, the model behaves solely as a prompt builder; accepting natural language input and returning only optimized prompts in markdown, with no additional output or functionality. ***No fluff, just prompt engineering magic.***
+3. **Reliability Goal:** 
+  - The toolkit aims for a near-100% success rate in producing expected output behavior based on user input, ensuring that the PromptCrafter interaction is both predictable and productive. 
+  - As more testing is done, this success rate will improve.
+
+> _Additional toolkits, including a library of high-quality prompts and templates, are planned for future releases._
 
 ---
 
-## 🤝 How to Contribute
+## Future Plans
 
-The goal of LekkerPrompt is to be a community-driven, open-source initiative, and contributions are always welcome! Here’s how you can help:
+LekkerPrompt is building toward a robust, community-driven resource library for advanced prompt and context engineering. Upcoming releases will expand the repository with two primary types of collections:
 
-- Share your expertise by proposing new prompts or resources via [issues](https://github.com/sammyhamwi/LekkerPrompt/issues)
-- Submit a pull request with your contributions—whether that's fixes, new features, enhancements, or anything else you would like to discuss
-- Provide feedback and suggestions to help shape the direction of this project
+1. **LekkerPrompt Originals**
+    - Toolkits and resources developed entirely by LekkerPrompt.
+    - Includes original guides, documentation, specialized prompt libraries, and context engineering templates.
+    - ***Fully open source and fully open to LekkerPrompt community development.***
+2. **Curated External Resources**
+    - A handpicked selection of personally tested, high-quality external documentation, articles, and guides by the LekkerPrompt community.
+    - Focuses on valuable third-party contributions to prompt and context engineering, presented with summaries and links for easy discovery.
+
+### **Planned Repo Structure:**
+
+```
+/
+├── lekker-toolkits/                # All LekkerPrompt-developed toolkits
+│    └── copilot-prompt-builder/    #
+├── lekker-guides/                  # Original guides and documentation by LekkerPrompt
+├── external-guides/                # Curated markdown files linking to/summarizing third-party resources
+```
+This structure ensures a clear separation between internally developed and externally curated content, making it easier for users to navigate and contribute.
 
 ---
 
-<h2 id="contributors">Contributors</h2>
+## Getting Started
 
-To show LekkerPrompt's support and appreciation for contributors, **all** will be featured in this section. Thank you to all that have made this project worth-while:
+1.  **Set Up Your Copilot Space**: Navigate to the [🔗`promptcrafter/`](https://github.com/sammyhamwi/LekkerPrompt/tree/master/promptcrafter) directory and follow the [🔗`README.md`](https://github.com/sammyhamwi/LekkerPrompt/tree/master/promptcrafter/README.md) to configure your environment.
+2.  **Learn and Enhance**: Use the materials in the resource library to sharpen your prompt and context engineering skills.
+3.  **Stay Updated**: **Follow** and **star** the repository for updates as new toolkits are added. 
+> _Your support means a lot to a new open source creator! :blue_heart:_
+
+---
+
+## How to Contribute
+
+LekkerPrompt is a community-driven, open source initiative, and your contributions are highly valued. Here’s how you can help:
+
+-   **Propose Ideas**: Share your expertise by suggesting new prompts or resources via [Issues](https://github.com/sammyhamwi/LekkerPrompt/issues).
+-   **Submit Pull Requests**: Contribute directly with fixes, new features, or enhancements.
+-   **Provide Feedback**: Help shape the project's direction with your feedback and suggestions.
+
+---
+
+<h2 id="contributors">💖 Contributors</h2>
+
+<p>To show my full support and appreciation, <strong>all</strong> contributors will be featured here. Thank you to everyone who makes this project possible.</p>
 
 <a href="https://github.com/sammyhamwi/LekkerPrompt/graphs/contributors">
-  <p align="center">
-    <img width="720" src="https://contrib.rocks/image?repo=sammyhamwi/LekkerPrompt" alt="A table of avatars from LekkerPrompt contributors" />
+  <p align="left">
+    <img src="https://contrib.rocks/image?repo=sammyhamwi/LekkerPrompt"
+         alt="A table of avatars from LekkerPrompt contributors"
+         style="max-width: 100%; width: 50px;" />
   </p>
 </a>
 
-
-LekkerPrompt is just getting started. Join me on this journey to build the ultimate toolkit for LLM prompting and context creation!
-
-
-
-
-
-
+<p>LekkerPrompt is just getting started. Join [:wave:me](https://github.com/sammyhamwi) on this journey to build the ultimate toolkit for LLM prompting and context creation!</p>
