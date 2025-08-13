@@ -1,6 +1,8 @@
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import type { DefaultSession, NextAuthConfig } from "next-auth";
 import DiscordProvider from "next-auth/providers/discord";
+import EmailProvider from "next-auth/providers/email";
+import { env } from "@/env";
 
 import { db } from "@/server/db";
 
@@ -31,26 +33,44 @@ declare module "next-auth" {
  * @see https://next-auth.js.org/configuration/options
  */
 export const authConfig = {
-	providers: [
-		DiscordProvider,
-		/**
-		 * ...add more providers here.
-		 *
-		 * Most other providers require a bit more work than the Discord provider. For example, the
-		 * GitHub provider requires you to add the `refresh_token_expires_in` field to the Account
-		 * model. Refer to the NextAuth.js docs for the provider you want to use. Example:
-		 *
-		 * @see https://next-auth.js.org/providers/github
-		 */
-	],
+    providers: [
+        // Discord provider only if configured
+        ...((env.AUTH_DISCORD_ID && env.AUTH_DISCORD_SECRET) ? [DiscordProvider] : []),
+        // Email magic link provider (added conditionally if env is present)
+        ...((env.EMAIL_FROM && (env.EMAIL_SERVER || env.EMAIL_SERVER_HOST))
+            ? [
+                EmailProvider({
+                    server: env.EMAIL_SERVER
+                        ? env.EMAIL_SERVER
+                        : {
+                            host: env.EMAIL_SERVER_HOST!,
+                            port: env.EMAIL_SERVER_PORT ? Number(env.EMAIL_SERVER_PORT) : 587,
+                            secure: env.EMAIL_SERVER_SECURE ? ["true", "1"].includes(env.EMAIL_SERVER_SECURE) : false,
+                            auth: {
+                                user: env.EMAIL_SERVER_USER!,
+                                pass: env.EMAIL_SERVER_PASSWORD!,
+                            },
+                        },
+                    from: env.EMAIL_FROM,
+                }),
+            ]
+            : []),
+    ],
 	adapter: PrismaAdapter(db),
 	callbacks: {
-		session: ({ session, user }) => ({
-			...session,
-			user: {
-				...session.user,
-				id: user.id,
-			},
-		}),
+		session: ({ session, user }) => {
+			const derivedName = session.user?.name ?? (session.user?.email ? session.user.email.split("@")[0] : undefined);
+			return {
+				...session,
+				user: {
+					...session.user,
+					id: user.id,
+					name: derivedName ?? session.user?.name,
+				},
+			};
+		},
 	},
+    pages: {
+        signIn: "/auth/signin",
+    },
 } satisfies NextAuthConfig;

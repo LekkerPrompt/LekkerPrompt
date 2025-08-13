@@ -23,6 +23,7 @@
 		"jsx": "preserve",
 		"plugins": [{ "name": "next" }],
 		"incremental": true,
+		"types": ["node"],
 
 		/* Path Aliases */
 		"baseUrl": ".",
