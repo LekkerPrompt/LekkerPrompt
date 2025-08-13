@@ -3,10 +3,11 @@
 import { signIn } from "next-auth/react";
 
 export default function DiscordSignInButton() {
+  const base = process.env.NEXT_PUBLIC_BASE_PATH || '';
   return (
     <button
       type="button"
-      onClick={() => signIn("discord", { callbackUrl: "/chat" })}
+      onClick={() => signIn("discord", { callbackUrl: `${base}/chat` })}
       className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#5865F2] px-6 py-3 text-center font-semibold text-white transition-colors hover:bg-[#4752C4]"
     >
       <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">

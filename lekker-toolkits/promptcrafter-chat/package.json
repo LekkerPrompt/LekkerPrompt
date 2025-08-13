@@ -14,7 +14,7 @@
 		"db:push": "prisma db push",
 		"db:studio": "prisma studio",
 		"dev": "next dev --turbo",
-		"postinstall": "prisma generate",
+		"postinstall": "node -e \"console.log('Skipping prisma generate during install; handled at runtime by app.js')\"",
 		"preview": "next build && next start",
 		"start": "next start",
 		"start:standalone": "node app.js",
@@ -52,4 +52,8 @@
 		"initVersion": "7.39.3"
 	},
 	"packageManager": "npm@11.4.2"
+,
+	"engines": {
+		"node": ">=18.18.0"
+	}
 }

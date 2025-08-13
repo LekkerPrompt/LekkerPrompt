@@ -164,7 +164,8 @@ export default function ChatClient({ user }: ChatClientProps) {
     setMessages((m) => [...m, userMsg]);
     setLoading(true);
     try {
-      const res = await fetch("/api/gemini/chat", {
+      const base = process.env.NEXT_PUBLIC_BASE_PATH || "";
+      const res = await fetch(`${base}/api/gemini/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

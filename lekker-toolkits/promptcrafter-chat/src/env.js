@@ -44,6 +44,7 @@ export const env = createEnv({
 	 */
 	client: {
 		// NEXT_PUBLIC_CLIENTVAR: z.string(),
+		NEXT_PUBLIC_BASE_PATH: z.string().optional(),
 	},
 
 	/**
@@ -63,6 +64,7 @@ export const env = createEnv({
 		GOOGLE_GEMINI_SYSTEM_PROMPT_BUILD: process.env.GOOGLE_GEMINI_SYSTEM_PROMPT_BUILD,
 		GOOGLE_GEMINI_SYSTEM_PROMPT_ENHANCE: process.env.GOOGLE_GEMINI_SYSTEM_PROMPT_ENHANCE,
 		ADMIN_EMAILS: process.env.ADMIN_EMAILS,
+		NEXT_PUBLIC_BASE_PATH: process.env.NEXT_PUBLIC_BASE_PATH,
 		NODE_ENV: process.env.NODE_ENV,
 		EMAIL_SERVER: process.env.EMAIL_SERVER,
 		EMAIL_FROM: process.env.EMAIL_FROM,
