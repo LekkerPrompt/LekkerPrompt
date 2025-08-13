@@ -27,6 +27,11 @@ WORKDIR /app
 # Copy repo to this stage
 COPY --from=repo /repo /repo
 
+# If your builder has access to a .env file, you can uncomment the next two lines to load it.
+# This keeps secrets out of the Dockerfile while allowing build-time envs.
+# ARG ENV_FILE=.env
+# ENV $(cat ${ENV_FILE} | xargs)
+
 # Optionally set APP_DIR at build time; default autodetects common paths
 ARG APP_DIR
 RUN set -eux; \
