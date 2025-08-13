@@ -34,8 +34,6 @@ interface FiltersSidebarProps {
   savePreset: () => void;
   presetName: string;
   setPresetName: (val: string) => void;
-  // Tutorial examples
-  onExampleClick?: (text: string) => void;
   // Chats
   chats?: Array<{ id: string; title: string; updatedAt: number; messageCount: number }>;
   currentChatId?: string | null;
@@ -56,8 +54,6 @@ interface FiltersSidebarProps {
   setLanguage: (val: string) => void;
   temperature: number;
   setTemperature: (val: number) => void;
-  remember: boolean;
-  setRemember: (val: boolean) => void;
   // Type-specific
   stylePreset: string;
   setStylePreset: (val: string) => void;
@@ -108,7 +104,6 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
     savePreset,
     presetName,
     setPresetName,
-    onExampleClick,
     chats,
     currentChatId,
     onSelectChat,
@@ -127,8 +122,6 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
     setLanguage,
     temperature,
     setTemperature,
-    remember,
-    setRemember,
     stylePreset,
     setStylePreset,
     aspectRatio,
@@ -151,14 +144,6 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
         </a>
       </div>
       <div className="mt-4 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
-        {/* Chats (compact) */}
-        <ChatsList
-          chats={chats}
-          currentChatId={currentChatId}
-          onSelectChat={onSelectChat}
-          onDeleteChat={onDeleteChat}
-        />
-
         <div className="text-xs font-semibold text-gray-400">Presets</div>
         <div>
           <select
@@ -267,13 +252,11 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
               className="w-full rounded-md border border-gray-700 bg-gray-800 px-2 py-2 text-xs text-gray-100 shadow-sm transition hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="English">English</option>
+              <option value="Dutch">Dutch</option>
+              <option value="Arabic">Arabic</option>
               <option value="Mandarin Chinese">Mandarin Chinese</option>
-              <option value="Hindi">Hindi</option>
               <option value="Spanish">Spanish</option>
               <option value="French">French</option>
-              <option value="Arabic">Arabic</option>
-              <option value="Bengali">Bengali</option>
-              <option value="Portuguese">Portuguese</option>
               <option value="Russian">Russian</option>
               <option value="Urdu">Urdu</option>
             </select>
@@ -296,10 +279,6 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
               <span className="text-xs text-gray-400">{temperature.toFixed(1)}</span>
             </div>
           </div>
-          <label className="flex items-center gap-2 text-xs text-gray-200">
-            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-            Remember my settings
-          </label>
         </div>
 
         {taskType === "image" && (
@@ -350,30 +329,12 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
       </div>
 
       <div className="shrink-0 border-t border-gray-800 pt-3">
-        <div className="mb-2 text-xs font-semibold text-gray-400">Try these examples:</div>
-        <div className="flex flex-col gap-2">
-          <button
-            type="button"
-            onClick={() => onExampleClick?.("Explain quantum computing in simple terms.")}
-            className="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-left text-xs text-gray-100 transition hover:border-blue-500 hover:bg-gray-800/80"
-          >
-            "Explain quantum computing in simple terms."
-          </button>
-          <button
-            type="button"
-            onClick={() => onExampleClick?.("What are three key benefits of a Mediterranean diet?")}
-            className="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-left text-xs text-gray-100 transition hover:border-blue-500 hover:bg-gray-800/80"
-          >
-            "What are three key benefits of a Mediterranean diet?"
-          </button>
-          <button
-            type="button"
-            onClick={() => onExampleClick?.("Write a short, professional email to a new client.")}
-            className="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-left text-xs text-gray-100 transition hover:border-blue-500 hover:bg-gray-800/80"
-          >
-            "Write a short, professional email to a new client."
-          </button>
-        </div>
+        <ChatsList
+          chats={chats}
+          currentChatId={currentChatId}
+          onSelectChat={onSelectChat}
+          onDeleteChat={onDeleteChat}
+        />
 
         <div className="mt-2 pt-2 text-[10px] text-gray-500 md:hidden">
           <a

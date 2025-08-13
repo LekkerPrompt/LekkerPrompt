@@ -1,96 +1,77 @@
-# Multi-stage Dockerfile for T3 App (Next.js 15 + Prisma + Postgres)
+# Production build for PromptCrafter Chat
+# - Multi-stage image
+# - Builds Next.js standalone output
+# - Generates Prisma Client at build time
+# - Applies DB migrations at container start via app.js
 
-# Use Debian-based image to avoid Prisma/openssl issues on Alpine
-FROM node:20-bookworm-slim AS base
+ARG NODE_VERSION=20
+FROM node:${NODE_VERSION}-bookworm-slim AS base
 
 ENV NODE_ENV=production \
-    # Ensure Next binds to all interfaces in containers
-    HOSTNAME=0.0.0.0 \
-    PORT=3000
-
-WORKDIR /app
-
-# --- Install dependencies (cached if package files unchanged) ---
-FROM base AS deps
-
-# Install system deps used by some libs during install (optional but safe)
-RUN apt-get update -y && apt-get install -y --no-install-recommends \
-    ca-certificates openssl && rm -rf /var/lib/apt/lists/*
-
-# Align npm with project packageManager
-RUN npm i -g npm@11.4.2
-
-COPY package.json package-lock.json ./
-# Copy prisma before install because postinstall runs `prisma generate`
-COPY prisma ./prisma
-
-# Use npm CI for reproducible installs
-RUN npm ci
-
-# --- Development image ---
-FROM node:20-bookworm-slim AS dev
-
-ENV NODE_ENV=development \
-    HOSTNAME=0.0.0.0 \
-    PORT=3000 \
-    # Skip strict env validation during container builds/dev
+    NEXT_TELEMETRY_DISABLED=1 \
     SKIP_ENV_VALIDATION=true
 
 WORKDIR /app
+RUN apt-get update -y && \
+    apt-get install -y --no-install-recommends ca-certificates openssl libc6 && \
+    rm -rf /var/lib/apt/lists/*
 
-# System deps
-RUN apt-get update -y && apt-get install -y --no-install-recommends \
-    ca-certificates openssl && rm -rf /var/lib/apt/lists/*
-
-# Align npm with project packageManager
-RUN npm i -g npm@11.4.2
+# Install dependencies (with dev deps for build)
+FROM base AS deps
 
 COPY package.json package-lock.json ./
-COPY prisma ./prisma
 RUN npm ci
 
-# Copy source code (mounted as volume in docker-compose for live reload)
-COPY . .
+# Build the app and generate Prisma client
+FROM base AS builder
 
-EXPOSE 3000
-
-CMD ["sh", "-c", "npm run dev"]
-
-# --- Build production app ---
-FROM deps AS builder
-
-ENV SKIP_ENV_VALIDATION=true
-# Allow compiling basePath at build-time (must be provided via --build-arg)
-ARG NEXT_BASE_PATH=
-ENV NEXT_BASE_PATH=$NEXT_BASE_PATH \
-    NEXT_PUBLIC_BASE_PATH=$NEXT_BASE_PATH
-
-# Copy full source for build
-COPY . .
-
-# Build Next.js app
-RUN npx prisma generate && npm run build
-
-# --- Production runtime image ---
-FROM base AS prod
-
-# Copy node_modules and built app
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=builder /app/.next ./.next
+COPY . .
+
+# Generate Prisma client (postinstall is disabled in package.json)
+RUN npx prisma generate
+
+# Build Next.js (standalone)
+RUN npm run build
+
+# Prune devDependencies after build to slim runtime node_modules, but keep generated Prisma client
+RUN npm prune --omit=dev
+
+# Runtime image
+FROM base AS runner
+
+ENV NODE_ENV=production \
+    PORT=3000 \
+    AUTH_TRUST_HOST=true \
+    UNDICI_NO_WASM=1
+
+# Run as non-root for security
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 --ingroup nodejs node
+
+WORKDIR /app
+
+# Copy standalone build output
+COPY --from=builder /app/.next/standalone ./.next/standalone
+COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
+
+# Copy runtime files
+COPY --from=builder /app/app.js ./app.js
+COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/next.config.js ./next.config.js
-COPY --from=builder /app/postcss.config.js ./postcss.config.js
-COPY --from=builder /app/prisma ./prisma
 
-# Set conservative defaults to avoid WASM OOM and ensure basePath is available at runtime too
-ENV UNDICI_NO_WASM=1 \
-    NODE_OPTIONS=--max-old-space-size=2048 \
-    NEXT_BASE_PATH=$NEXT_BASE_PATH \
-    NEXT_PUBLIC_BASE_PATH=$NEXT_BASE_PATH
+# Copy pruned production node_modules (contains generated Prisma client)
+COPY --from=builder /app/node_modules ./node_modules
+
+# Ensure ownership
+RUN chown -R node:node /app
+USER node
 
 EXPOSE 3000
 
-CMD ["npm", "run", "start"]
+# Start server via app.js (ensures static assets are copied and migrations are applied)
+CMD ["node", "app.js"]
 
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import FiltersSidebar from "./FiltersSidebar";
+import { api } from "@/trpc/react";
 
 type Mode = "build" | "enhance";
 type TaskType = "general" | "coding" | "image" | "research" | "writing" | "marketing";
@@ -35,7 +36,6 @@ export default function ChatClient({ user }: ChatClientProps) {
   const [aspectRatio, setAspectRatio] = useState("1:1");
   const [includeTests, setIncludeTests] = useState(true);
   const [requireCitations, setRequireCitations] = useState(true);
-  const [remember, setRemember] = useState(true);
   const [presetName, setPresetName] = useState("");
   const [presets, setPresets] = useState<Array<{ id?: string; name: string; mode: Mode; taskType: TaskType; options?: any }>>([]);
   const [loadingPresets, setLoadingPresets] = useState(false);
@@ -50,7 +50,21 @@ export default function ChatClient({ user }: ChatClientProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
-  const [chats, setChats] = useState<Array<{ id: string; title: string; updatedAt: number; messageCount: number }>>([]);
+
+  // tRPC utilities and queries for chats
+  const utils = api.useUtils();
+  const { data: chatList } = api.chat.list.useQuery(undefined, { refetchOnWindowFocus: false });
+  const createChat = api.chat.create.useMutation();
+  const appendMessages = api.chat.appendMessages.useMutation({
+    onSuccess: async () => {
+      await utils.chat.list.invalidate();
+    },
+  });
+  const removeChat = api.chat.remove.useMutation({
+    onSuccess: async () => {
+      await utils.chat.list.invalidate();
+    },
+  });
 
   const responseEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -75,6 +89,16 @@ export default function ChatClient({ user }: ChatClientProps) {
     el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
   }, []);
 
+  // Close sidebar on Escape
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSidebarOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sidebarOpen]);
+
   useEffect(() => {
     autoResize();
   }, [autoResize]);
@@ -95,30 +119,15 @@ export default function ChatClient({ user }: ChatClientProps) {
     void load();
   }, []);
 
-  // Load chats from localStorage on mount
+  // Optional: restore last opened chat id from local storage (no writes back)
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("pc_chats");
-      if (raw) {
-        const parsed = JSON.parse(raw) as Array<{ id: string; title: string; updatedAt: number; messageCount: number }>;
-        setChats(parsed);
-      }
       const lastId = localStorage.getItem("pc_current_chat");
       if (lastId) setCurrentChatId(lastId);
     } catch {
       // noop
     }
   }, []);
-
-  // Persist chats list and current chat id
-  useEffect(() => {
-    try {
-      localStorage.setItem("pc_chats", JSON.stringify(chats));
-      if (currentChatId) localStorage.setItem("pc_current_chat", currentChatId);
-    } catch {
-      // noop
-    }
-  }, [chats, currentChatId]);
 
   const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading]);
   const applyPreset = useCallback((p: { name: string; mode: Mode; taskType: TaskType; options?: any }) => {
@@ -137,15 +146,12 @@ export default function ChatClient({ user }: ChatClientProps) {
     setRequireCitations(!!o.requireCitations);
   }, []);
 
-  const onExampleClick = useCallback((text: string) => {
-    setInput(text);
-    window.requestAnimationFrame(() => inputRef.current?.focus());
-  }, []);
-
   const startNewChat = useCallback(() => {
     setMessages([]);
     setInput("");
     setError(null);
+    setCurrentChatId(null);
+    try { localStorage.removeItem("pc_current_chat"); } catch {}
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
@@ -189,25 +195,47 @@ export default function ChatClient({ user }: ChatClientProps) {
     }
   }, [presetName, mode, taskType, tone, detail, format, language, temperature, stylePreset, aspectRatio, includeTests, requireCitations, presets]);
 
+  const ensureChatId = useCallback(async (firstLineForTitle?: string) => {
+    if (currentChatId) {
+      // Prefer validating locally against loaded chat list to avoid noisy errors
+      const list = chatList ?? (await utils.chat.list.fetch()).map((c: any) => ({ id: c.id }));
+      const exists = Array.isArray(list) && list.some((c: any) => c.id === currentChatId);
+      if (exists) return currentChatId;
+      setCurrentChatId(null);
+      try { localStorage.removeItem("pc_current_chat"); } catch {}
+    }
+    const title = (firstLineForTitle ?? "").slice(0, 40) || "New chat";
+    const created = await createChat.mutateAsync({ title });
+    setCurrentChatId(created.id);
+    try { localStorage.setItem("pc_current_chat", created.id); } catch {}
+    return created.id;
+  }, [currentChatId, createChat, chatList, utils.chat.list]);
+
   const send = useCallback(async () => {
     if (!canSend) return;
     const text = input.trim();
     setInput("");
     setError(null);
-    // Ensure chat exists and save user message
-    const chatId = ensureChat();
+    // Ensure chat exists (create in DB if needed)
+    let chatId: string;
+    try {
+      chatId = await ensureChatId(text);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to start chat");
+      return;
+    }
     const userMsg: MessageItem = { id: crypto.randomUUID(), role: "user", content: text };
     setMessages((m) => {
       // Cap chat at 50 messages
       const next = [...m, userMsg];
       return next.slice(Math.max(0, next.length - 50));
     });
+    // Append user message to DB (cap enforced server-side)
     try {
-      const raw = localStorage.getItem(`pc_chat_${chatId}`);
-      const existing = raw ? (JSON.parse(raw) as MessageItem[]) : [];
-      const updated = [...existing, userMsg];
-      localStorage.setItem(`pc_chat_${chatId}`, JSON.stringify(updated.slice(Math.max(0, updated.length - 50))));
-    } catch {}
+      await appendMessages.mutateAsync({ chatId, messages: [{ id: userMsg.id, role: userMsg.role, content: userMsg.content }], cap: 50 });
+    } catch (e) {
+      // Keep UI responsive even if DB append fails
+    }
     setLoading(true);
     try {
       const base = process.env.NEXT_PUBLIC_BASE_PATH || "";
@@ -243,14 +271,18 @@ export default function ChatClient({ user }: ChatClientProps) {
         const next = [...m, assistantMsg];
         return next.slice(Math.max(0, next.length - 50));
       });
-      // Save chat to local list
-      saveMessageToChat(assistantMsg);
+      // Append assistant message to DB
+      try {
+        await appendMessages.mutateAsync({ chatId, messages: [{ id: assistantMsg.id, role: assistantMsg.role, content: assistantMsg.content }], cap: 50 });
+      } catch {
+        // noop
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
     }
-  }, [canSend, input, mode, taskType, tone, detail, format, language, temperature, stylePreset, aspectRatio, includeTests, requireCitations]);
+  }, [canSend, input, mode, taskType, tone, detail, format, language, temperature, stylePreset, aspectRatio, includeTests, requireCitations, ensureChatId, appendMessages]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -259,59 +291,38 @@ export default function ChatClient({ user }: ChatClientProps) {
     }
   };
 
-  // Local chat helpers
-  const ensureChat = useCallback(() => {
-    if (!currentChatId) {
-      const id = crypto.randomUUID();
-      setCurrentChatId(id);
-      setChats((prev) => [{ id, title: messages[0]?.content?.slice(0, 40) || "New chat", updatedAt: Date.now(), messageCount: messages.length }, ...prev]);
-      return id;
-    }
-    return currentChatId;
-  }, [currentChatId, messages]);
-
-  const saveMessageToChat = useCallback((lastMessage?: MessageItem) => {
-    const id = ensureChat();
-    setChats((prev) => {
-      const existing = prev.find((c) => c.id === id);
-      const count = Math.min(50, messages.length + (lastMessage ? 1 : 0));
-      const title = prev.find((c) => c.id === id)?.title || messages[0]?.content?.slice(0, 40) || "New chat";
-      const nextItem = { id, title, updatedAt: Date.now(), messageCount: count };
-      const others = prev.filter((c) => c.id !== id);
-      return [nextItem, ...others].slice(0, 100);
-    });
-  }, [ensureChat, messages]);
-
-  const selectChat = useCallback((id: string) => {
+  const selectChat = useCallback(async (id: string) => {
     setCurrentChatId(id);
     try {
-      const raw = localStorage.getItem(`pc_chat_${id}`);
-      const loaded = raw ? (JSON.parse(raw) as MessageItem[]) : [];
+      const data = await utils.chat.get.fetch({ chatId: id, limit: 50 });
+      const loaded: MessageItem[] = data.messages.map((m: { id: string; role: string; content: string }) => ({ id: m.id, role: m.role as any, content: m.content }));
       setMessages(loaded);
-    } catch {
+      setInput("");
+      setSidebarOpen(false);
+      try { localStorage.setItem("pc_current_chat", id); } catch {}
+      // Scroll to bottom after hydration
+      requestAnimationFrame(() => responseEndRef.current?.scrollIntoView({ behavior: "smooth" }));
+    } catch (err) {
+      // Swallow errors from invalid chat id to avoid noisy query errors
+      console.warn("Failed to load chat; clearing selection", err);
       setMessages([]);
-    }
-  }, []);
-
-  const deleteChat = useCallback((id: string) => {
-    setChats((prev) => prev.filter((c) => c.id !== id));
-    try { localStorage.removeItem(`pc_chat_${id}`); } catch {}
-    if (currentChatId === id) {
       setCurrentChatId(null);
-      setMessages([]);
+      try { localStorage.removeItem("pc_current_chat"); } catch {}
     }
-  }, [currentChatId]);
+  }, [utils.chat.get]);
 
-  // Persist current chat messages whenever they change
-  useEffect(() => {
-    if (!currentChatId) return;
+  const deleteChat = useCallback(async (id: string) => {
     try {
-      const trimmed = messages.slice(Math.max(0, messages.length - 50));
-      localStorage.setItem(`pc_chat_${currentChatId}`, JSON.stringify(trimmed));
+      await removeChat.mutateAsync({ chatId: id });
+      if (currentChatId === id) {
+        setCurrentChatId(null);
+        setMessages([]);
+      }
+      await utils.chat.list.invalidate();
     } catch {
       // noop
     }
-  }, [messages, currentChatId]);
+  }, [removeChat, currentChatId, utils.chat.list]);
 
   const copyMessage = useCallback(async (id: string, text: string) => {
     try {
@@ -327,7 +338,7 @@ export default function ChatClient({ user }: ChatClientProps) {
 
   return (
     <div className="relative flex min-h-svh w-full">
-      {/* Mobile backdrop */}
+      {/* Sidebar backdrop (mobile only) */}
       <div
         className={cn(
           "fixed inset-0 z-30 bg-black/50 transition-opacity md:hidden",
@@ -339,8 +350,9 @@ export default function ChatClient({ user }: ChatClientProps) {
       {/* Sidebar */}
       <div
         className={cn(
-          "fixed inset-y-0 left-0 z-40 w-80 -translate-x-full transform transition-transform duration-200 md:static md:translate-x-0",
-          sidebarOpen && "translate-x-0"
+          // Mobile: slide-over
+          "fixed inset-y-0 left-0 z-40 w-80 -translate-x-full transform transition-transform duration-200 md:relative md:inset-auto md:transform-none md:transition-[width] md:duration-200 md:shrink-0",
+          sidebarOpen ? "translate-x-0 md:w-80 md:pointer-events-auto" : "-translate-x-full md:w-0 md:overflow-hidden md:pointer-events-none"
         )}
       >
         <FiltersSidebar
@@ -354,8 +366,7 @@ export default function ChatClient({ user }: ChatClientProps) {
           savePreset={savePreset}
           presetName={presetName}
           setPresetName={setPresetName}
-          onExampleClick={onExampleClick}
-          chats={chats}
+          chats={useMemo(() => (chatList ?? []).map((c: { id: string; title?: string | null; updatedAt: string | Date; messageCount?: number; _count?: { messages: number } }) => ({ id: c.id, title: c.title ?? "Untitled", updatedAt: (typeof c.updatedAt === "string" ? new Date(c.updatedAt).getTime() : (c.updatedAt as Date).getTime()), messageCount: c.messageCount ?? (c._count?.messages ?? 0) })), [chatList])}
           currentChatId={currentChatId}
           onSelectChat={selectChat}
           onDeleteChat={deleteChat}
@@ -373,8 +384,6 @@ export default function ChatClient({ user }: ChatClientProps) {
           setLanguage={setLanguage}
           temperature={temperature}
           setTemperature={setTemperature}
-          remember={remember}
-          setRemember={setRemember}
           stylePreset={stylePreset}
           setStylePreset={setStylePreset}
           aspectRatio={aspectRatio}
@@ -393,7 +402,7 @@ export default function ChatClient({ user }: ChatClientProps) {
             <button
               type="button"
               className="rounded-md border border-gray-700 px-2 py-1 text-sm text-gray-200 transition hover:border-blue-500 hover:text-white"
-              onClick={() => setSidebarOpen(true)}
+              onClick={() => setSidebarOpen((v) => !v)}
               aria-label="Open filters sidebar"
               title="Toggle sidebar"
             >
