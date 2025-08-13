@@ -48,8 +48,8 @@ RUN set -eux; \
     echo "Using app directory: ${DETECTED_DIR}"; \
     cp -R "${DETECTED_DIR}/." /app
 
-# Install dependencies (with dev deps for build)
-RUN npm ci
+# Install dependencies (include dev deps for build regardless of NODE_ENV)
+RUN npm ci --include=dev
 
 # Generate Prisma client (postinstall is disabled in package.json)
 RUN npx prisma generate
