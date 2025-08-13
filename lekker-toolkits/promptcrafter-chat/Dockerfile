@@ -1,8 +1,7 @@
-# Production build for PromptCrafter Chat
-# - Multi-stage image
-# - Builds Next.js standalone output
-# - Generates Prisma Client at build time
-# - Applies DB migrations at container start via app.js
+# Production build for PromptCrafter Chat (monorepo-friendly)
+# - Works when the app lives in a subdirectory of the repository
+# - Detects the app directory automatically (or override via APP_DIR build-arg)
+# - Builds Next.js standalone and runs via app.js (handles Prisma migrations)
 
 ARG NODE_VERSION=20
 FROM node:${NODE_VERSION}-bookworm-slim AS base
@@ -13,28 +12,52 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 RUN apt-get update -y && \
-    apt-get install -y --no-install-recommends ca-certificates openssl libc6 && \
+    apt-get install -y --no-install-recommends ca-certificates openssl libc6 bash && \
     rm -rf /var/lib/apt/lists/*
 
-# Install dependencies (with dev deps for build)
-FROM base AS deps
+# Bring the whole repository in; we'll copy only the app subtree later
+FROM base AS repo
+WORKDIR /repo
+COPY . /repo
 
-COPY package.json package-lock.json ./
-RUN npm ci
-
-# Build the app and generate Prisma client
+# Build the app
 FROM base AS builder
+WORKDIR /app
 
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+# Copy repo to this stage
+COPY --from=repo /repo /repo
+
+# Optionally set APP_DIR at build time; default autodetects common paths
+ARG APP_DIR
+RUN set -eux; \
+    DETECTED_DIR=""; \
+    if [ -n "${APP_DIR:-}" ] && [ -f "/repo/${APP_DIR}/package.json" ]; then \
+      DETECTED_DIR="/repo/${APP_DIR}"; \
+    elif [ -f "/repo/package.json" ]; then \
+      DETECTED_DIR="/repo"; \
+    elif [ -f "/repo/lekker-toolkits/promptcrafter-chat/package.json" ]; then \
+      DETECTED_DIR="/repo/lekker-toolkits/promptcrafter-chat"; \
+    elif [ -f "/repo/promptcrafter-chat/package.json" ]; then \
+      DETECTED_DIR="/repo/promptcrafter-chat"; \
+    else \
+      echo "Could not locate package.json. Searched /repo and common subpaths."; \
+      echo "Found candidates:"; \
+      find /repo -maxdepth 3 -name package.json -printf '%h\n' || true; \
+      exit 1; \
+    fi; \
+    echo "Using app directory: ${DETECTED_DIR}"; \
+    cp -R "${DETECTED_DIR}/." /app
+
+# Install dependencies (with dev deps for build)
+RUN npm ci
 
 # Generate Prisma client (postinstall is disabled in package.json)
 RUN npx prisma generate
 
-# Build Next.js (standalone)
+# Build Next.js (standalone output)
 RUN npm run build
 
-# Prune devDependencies after build to slim runtime node_modules, but keep generated Prisma client
+# Prune dev deps but keep generated Prisma client
 RUN npm prune --omit=dev
 
 # Runtime image
@@ -45,13 +68,13 @@ ENV NODE_ENV=production \
     AUTH_TRUST_HOST=true \
     UNDICI_NO_WASM=1
 
-# Run as non-root for security
+# Non-root user
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 --ingroup nodejs node
 
 WORKDIR /app
 
-# Copy standalone build output
+# Copy build outputs
 COPY --from=builder /app/.next/standalone ./.next/standalone
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
@@ -62,16 +85,14 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/next.config.js ./next.config.js
 
-# Copy pruned production node_modules (contains generated Prisma client)
+# Production node_modules (contains generated Prisma client)
 COPY --from=builder /app/node_modules ./node_modules
 
-# Ensure ownership
 RUN chown -R node:node /app
 USER node
 
 EXPOSE 3000
 
-# Start server via app.js (ensures static assets are copied and migrations are applied)
 CMD ["node", "app.js"]
 
 
