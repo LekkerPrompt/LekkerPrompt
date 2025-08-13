@@ -60,12 +60,16 @@ CMD ["sh", "-c", "npm run dev"]
 FROM deps AS builder
 
 ENV SKIP_ENV_VALIDATION=true
+# Allow compiling basePath at build-time (must be provided via --build-arg)
+ARG NEXT_BASE_PATH=
+ENV NEXT_BASE_PATH=$NEXT_BASE_PATH \
+    NEXT_PUBLIC_BASE_PATH=$NEXT_BASE_PATH
 
 # Copy full source for build
 COPY . .
 
 # Build Next.js app
-RUN npm run build
+RUN npx prisma generate && npm run build
 
 # --- Production runtime image ---
 FROM base AS prod
@@ -78,6 +82,12 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/next.config.js ./next.config.js
 COPY --from=builder /app/postcss.config.js ./postcss.config.js
 COPY --from=builder /app/prisma ./prisma
+
+# Set conservative defaults to avoid WASM OOM and ensure basePath is available at runtime too
+ENV UNDICI_NO_WASM=1 \
+    NODE_OPTIONS=--max-old-space-size=2048 \
+    NEXT_BASE_PATH=$NEXT_BASE_PATH \
+    NEXT_PUBLIC_BASE_PATH=$NEXT_BASE_PATH
 
 EXPOSE 3000
 

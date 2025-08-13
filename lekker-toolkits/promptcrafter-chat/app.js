@@ -94,6 +94,14 @@ const effectiveHostname = process.env.HOSTNAME || process.env.HOST || "0.0.0.0";
 Reflect.set(process.env, "HOSTNAME", effectiveHostname);
 if (!process.env.PORT) Reflect.set(process.env, "PORT", "3000");
 if (process.env.AUTH_TRUST_HOST === undefined) Reflect.set(process.env, "AUTH_TRUST_HOST", "true");
+// Try to avoid Undici WASM OOM on constrained hosts
+if (process.env.UNDICI_NO_WASM === undefined) Reflect.set(process.env, "UNDICI_NO_WASM", "1");
+if (process.env.NODE_OPTIONS) {
+    // keep existing options
+} else {
+    // add modest headroom if not set by host
+    Reflect.set(process.env, "NODE_OPTIONS", "--max-old-space-size=2048");
+}
 
 // Run server from the standalone directory so relative paths match Next's expectations
 process.chdir(standaloneRoot);
