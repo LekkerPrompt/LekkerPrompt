@@ -28,9 +28,7 @@ export default function ChatClient({ user }: ChatClientProps) {
   const [tone, setTone] = useState<Tone>("neutral");
   const [detail, setDetail] = useState<Detail>("normal");
   const [format, setFormat] = useState<Format>("markdown");
-  const [audience, setAudience] = useState("");
   const [language, setLanguage] = useState("English");
-  const [styleGuidelines, setStyleGuidelines] = useState("");
   const [temperature, setTemperature] = useState(0.7);
   // Type-specific
   const [stylePreset, setStylePreset] = useState("photorealistic");
@@ -50,6 +48,9 @@ export default function ChatClient({ user }: ChatClientProps) {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+  const [chats, setChats] = useState<Array<{ id: string; title: string; updatedAt: number; messageCount: number }>>([]);
 
   const responseEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -94,6 +95,31 @@ export default function ChatClient({ user }: ChatClientProps) {
     void load();
   }, []);
 
+  // Load chats from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("pc_chats");
+      if (raw) {
+        const parsed = JSON.parse(raw) as Array<{ id: string; title: string; updatedAt: number; messageCount: number }>;
+        setChats(parsed);
+      }
+      const lastId = localStorage.getItem("pc_current_chat");
+      if (lastId) setCurrentChatId(lastId);
+    } catch {
+      // noop
+    }
+  }, []);
+
+  // Persist chats list and current chat id
+  useEffect(() => {
+    try {
+      localStorage.setItem("pc_chats", JSON.stringify(chats));
+      if (currentChatId) localStorage.setItem("pc_current_chat", currentChatId);
+    } catch {
+      // noop
+    }
+  }, [chats, currentChatId]);
+
   const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading]);
   const applyPreset = useCallback((p: { name: string; mode: Mode; taskType: TaskType; options?: any }) => {
     setPresetName(p.name);
@@ -103,14 +129,24 @@ export default function ChatClient({ user }: ChatClientProps) {
     if (o.tone) setTone(o.tone);
     if (o.detail) setDetail(o.detail);
     if (o.format) setFormat(o.format);
-    setAudience(o.audience ?? "");
     setLanguage(o.language ?? "English");
-    setStyleGuidelines(o.styleGuidelines ?? "");
     setTemperature(typeof o.temperature === "number" ? o.temperature : 0.7);
     setStylePreset(o.stylePreset ?? "photorealistic");
     setAspectRatio(o.aspectRatio ?? "1:1");
     setIncludeTests(!!o.includeTests);
     setRequireCitations(!!o.requireCitations);
+  }, []);
+
+  const onExampleClick = useCallback((text: string) => {
+    setInput(text);
+    window.requestAnimationFrame(() => inputRef.current?.focus());
+  }, []);
+
+  const startNewChat = useCallback(() => {
+    setMessages([]);
+    setInput("");
+    setError(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
   
@@ -134,9 +170,7 @@ export default function ChatClient({ user }: ChatClientProps) {
             tone,
             detail,
             format,
-            audience: audience || undefined,
             language: language || undefined,
-            styleGuidelines: styleGuidelines || undefined,
             temperature,
             stylePreset: taskType === "image" ? stylePreset : undefined,
             aspectRatio: taskType === "image" ? aspectRatio : undefined,
@@ -153,15 +187,27 @@ export default function ChatClient({ user }: ChatClientProps) {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     }
-  }, [presetName, mode, taskType, tone, detail, format, audience, language, styleGuidelines, temperature, stylePreset, aspectRatio, includeTests, requireCitations, presets]);
+  }, [presetName, mode, taskType, tone, detail, format, language, temperature, stylePreset, aspectRatio, includeTests, requireCitations, presets]);
 
   const send = useCallback(async () => {
     if (!canSend) return;
     const text = input.trim();
     setInput("");
     setError(null);
+    // Ensure chat exists and save user message
+    const chatId = ensureChat();
     const userMsg: MessageItem = { id: crypto.randomUUID(), role: "user", content: text };
-    setMessages((m) => [...m, userMsg]);
+    setMessages((m) => {
+      // Cap chat at 50 messages
+      const next = [...m, userMsg];
+      return next.slice(Math.max(0, next.length - 50));
+    });
+    try {
+      const raw = localStorage.getItem(`pc_chat_${chatId}`);
+      const existing = raw ? (JSON.parse(raw) as MessageItem[]) : [];
+      const updated = [...existing, userMsg];
+      localStorage.setItem(`pc_chat_${chatId}`, JSON.stringify(updated.slice(Math.max(0, updated.length - 50))));
+    } catch {}
     setLoading(true);
     try {
       const base = process.env.NEXT_PUBLIC_BASE_PATH || "";
@@ -176,9 +222,7 @@ export default function ChatClient({ user }: ChatClientProps) {
             tone,
             detail,
             format,
-            audience: audience || undefined,
             language: language || undefined,
-            styleGuidelines: styleGuidelines || undefined,
             temperature,
             // type-specific
             stylePreset: taskType === "image" ? (stylePreset as any) : undefined,
@@ -195,13 +239,18 @@ export default function ChatClient({ user }: ChatClientProps) {
         role: "assistant",
         content: data.output as string,
       };
-      setMessages((m) => [...m, assistantMsg]);
+      setMessages((m) => {
+        const next = [...m, assistantMsg];
+        return next.slice(Math.max(0, next.length - 50));
+      });
+      // Save chat to local list
+      saveMessageToChat(assistantMsg);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
     }
-  }, [canSend, input, mode, taskType, tone, detail, format, audience, language, styleGuidelines, temperature, stylePreset, aspectRatio, includeTests, requireCitations]);
+  }, [canSend, input, mode, taskType, tone, detail, format, language, temperature, stylePreset, aspectRatio, includeTests, requireCitations]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -209,6 +258,60 @@ export default function ChatClient({ user }: ChatClientProps) {
       void send();
     }
   };
+
+  // Local chat helpers
+  const ensureChat = useCallback(() => {
+    if (!currentChatId) {
+      const id = crypto.randomUUID();
+      setCurrentChatId(id);
+      setChats((prev) => [{ id, title: messages[0]?.content?.slice(0, 40) || "New chat", updatedAt: Date.now(), messageCount: messages.length }, ...prev]);
+      return id;
+    }
+    return currentChatId;
+  }, [currentChatId, messages]);
+
+  const saveMessageToChat = useCallback((lastMessage?: MessageItem) => {
+    const id = ensureChat();
+    setChats((prev) => {
+      const existing = prev.find((c) => c.id === id);
+      const count = Math.min(50, messages.length + (lastMessage ? 1 : 0));
+      const title = prev.find((c) => c.id === id)?.title || messages[0]?.content?.slice(0, 40) || "New chat";
+      const nextItem = { id, title, updatedAt: Date.now(), messageCount: count };
+      const others = prev.filter((c) => c.id !== id);
+      return [nextItem, ...others].slice(0, 100);
+    });
+  }, [ensureChat, messages]);
+
+  const selectChat = useCallback((id: string) => {
+    setCurrentChatId(id);
+    try {
+      const raw = localStorage.getItem(`pc_chat_${id}`);
+      const loaded = raw ? (JSON.parse(raw) as MessageItem[]) : [];
+      setMessages(loaded);
+    } catch {
+      setMessages([]);
+    }
+  }, []);
+
+  const deleteChat = useCallback((id: string) => {
+    setChats((prev) => prev.filter((c) => c.id !== id));
+    try { localStorage.removeItem(`pc_chat_${id}`); } catch {}
+    if (currentChatId === id) {
+      setCurrentChatId(null);
+      setMessages([]);
+    }
+  }, [currentChatId]);
+
+  // Persist current chat messages whenever they change
+  useEffect(() => {
+    if (!currentChatId) return;
+    try {
+      const trimmed = messages.slice(Math.max(0, messages.length - 50));
+      localStorage.setItem(`pc_chat_${currentChatId}`, JSON.stringify(trimmed));
+    } catch {
+      // noop
+    }
+  }, [messages, currentChatId]);
 
   const copyMessage = useCallback(async (id: string, text: string) => {
     try {
@@ -251,6 +354,11 @@ export default function ChatClient({ user }: ChatClientProps) {
           savePreset={savePreset}
           presetName={presetName}
           setPresetName={setPresetName}
+          onExampleClick={onExampleClick}
+          chats={chats}
+          currentChatId={currentChatId}
+          onSelectChat={selectChat}
+          onDeleteChat={deleteChat}
           taskType={taskType}
           setTaskType={(v) => setTaskType(v)}
           mode={mode}
@@ -263,8 +371,6 @@ export default function ChatClient({ user }: ChatClientProps) {
           setFormat={(v) => setFormat(v)}
           language={language}
           setLanguage={setLanguage}
-          audience={audience}
-          setAudience={setAudience}
           temperature={temperature}
           setTemperature={setTemperature}
           remember={remember}
@@ -277,23 +383,43 @@ export default function ChatClient({ user }: ChatClientProps) {
           setIncludeTests={setIncludeTests}
           requireCitations={requireCitations}
           setRequireCitations={setRequireCitations}
-          styleGuidelines={styleGuidelines}
-          setStyleGuidelines={setStyleGuidelines}
         />
       </div>
 
       {/* Chat area */}
       <div className="flex min-h-svh flex-1 flex-col">
-        <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-gray-800 bg-gray-900/80 px-4 py-3 backdrop-blur md:border-none md:bg-transparent">
-          <button
-            type="button"
-            className="rounded-md border border-gray-700 px-2 py-1 text-sm text-gray-200 transition hover:border-blue-500 hover:text-white md:hidden"
-            onClick={() => setSidebarOpen(true)}
-            aria-label="Open filters sidebar"
-          >
-            ☰
-          </button>
-          <div className="text-lg font-semibold text-blue-400">AI Powered PromptCrafter <i>by sammyhamwi.ai</i></div>
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-gray-800 bg-gray-900/80 px-4 py-3 backdrop-blur">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              className="rounded-md border border-gray-700 px-2 py-1 text-sm text-gray-200 transition hover:border-blue-500 hover:text-white"
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Open filters sidebar"
+              title="Toggle sidebar"
+            >
+              ☰
+            </button>
+            <div className="text-lg font-semibold text-blue-400">PromptCrafter <i>by sammyhamwi.ai</i></div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={startNewChat}
+              className="inline-flex rounded-md border border-gray-700 px-3 py-1.5 text-sm text-gray-200 transition hover:border-indigo-500 hover:text-white"
+              aria-label="Start a new chat"
+            >
+              + New Chat
+            </button>
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-700 text-gray-200 transition hover:border-indigo-500 hover:text-white"
+              aria-label="How to use"
+              title="How to use"
+            >
+              ?
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-3 md:p-4">
@@ -374,6 +500,64 @@ export default function ChatClient({ user }: ChatClientProps) {
             </button>
           </div>
         </div>
+
+        {helpOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center"
+            aria-modal="true"
+            role="dialog"
+            aria-label="How to use PromptCrafter"
+          >
+            <div className="absolute inset-0 bg-black/60" onClick={() => setHelpOpen(false)} />
+            <div
+              className="relative z-10 w-[92vw] max-w-xl rounded-xl border border-white/10 bg-gray-900 p-5 text-gray-100 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => setHelpOpen(false)}
+                className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-700 text-gray-300 transition hover:border-red-500 hover:text-white"
+                aria-label="Close help"
+                title="Close"
+              >
+                ✕
+              </button>
+              <div className="mb-3 text-lg font-semibold">How to use</div>
+              <div className="space-y-4 text-sm">
+                <div className="flex items-center gap-3 rounded-lg border border-gray-800 bg-gray-800/40 p-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600/20 text-indigo-300">💬</div>
+                  <div className="flex-1">
+                    <div className="font-medium">Send a Message</div>
+                    <div className="mt-1 flex items-center gap-2 text-gray-300">
+                      <span className="text-xl">→</span>
+                      <span>Type in the input bar below and press Enter or click <span className="rounded border border-white/20 px-1 py-0.5">Send</span>.</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 rounded-lg border border-gray-800 bg-gray-800/40 p-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-600/20 text-emerald-300">🗂️</div>
+                  <div className="flex-1">
+                    <div className="font-medium">Start a New Chat</div>
+                    <div className="mt-1 flex items-center gap-2 text-gray-300">
+                      <span className="text-xl">→</span>
+                      <span>Click the <span className="rounded border border-white/20 px-1 py-0.5">New Chat</span> button in the header.</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 rounded-lg border border-gray-800 bg-gray-800/40 p-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600/20 text-blue-300">📜</div>
+                  <div className="flex-1">
+                    <div className="font-medium">View Chat History</div>
+                    <div className="mt-1 flex items-center gap-2 text-gray-300">
+                      <span className="text-xl">→</span>
+                      <span>Open the sidebar and select from your conversations list.</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

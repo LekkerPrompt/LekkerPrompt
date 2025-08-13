@@ -68,6 +68,7 @@ model User {
     sessions      Session[]
     posts         Post[]
     presets       PromptPreset[]
+    chats         Chat[]
 }
 
 model VerificationToken {
@@ -101,4 +102,31 @@ model PromptPreset {
     user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
     @@unique([userId, name])
+}
+
+/// Per-user conversations
+model Chat {
+    id        String   @id @default(cuid())
+    userId    String
+    title     String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    messages  ChatMessage[]
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@index([userId, updatedAt])
+}
+
+/// Individual messages within a chat
+model ChatMessage {
+    id        String   @id @default(cuid())
+    chatId    String
+    role      String
+    content   String   @db.LongText
+    createdAt DateTime @default(now())
+
+    chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+    @@index([chatId, createdAt])
 }
