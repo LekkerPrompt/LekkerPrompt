@@ -293,7 +293,7 @@ export default function ChatClient({ user }: ChatClientProps) {
           >
             ☰
           </button>
-          <div className="text-lg font-semibold text-blue-400">PromptCrafter AI Chat by sammyhamwi.ai</div>
+          <div className="text-lg font-semibold text-blue-400">AI Powered PromptCrafter <i>by sammyhamwi.ai</i></div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-3 md:p-4">
