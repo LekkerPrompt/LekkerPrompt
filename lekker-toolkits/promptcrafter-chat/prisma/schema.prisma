@@ -3,6 +3,10 @@
 
 generator client {
     provider = "prisma-client-js"
+    // Include multiple runtime targets so the generated client works on
+    // newer (OpenSSL 3) and older (OpenSSL 1.0/1.1) Debian/CloudLinux hosts.
+    // Keep "native" for local dev.
+    binaryTargets = ["native", "debian-openssl-1.0.x", "debian-openssl-3.0.x"]
 }
 
 datasource db {
