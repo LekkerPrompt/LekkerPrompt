@@ -302,7 +302,6 @@ export default function ChatClient({ user }: ChatClientProps) {
       const loaded: MessageItem[] = data.messages.map((m: { id: string; role: string; content: string }) => ({ id: m.id, role: m.role as any, content: m.content }));
       setMessages(loaded);
       setInput("");
-      setSidebarOpen(false);
       try { localStorage.setItem("pc_current_chat", id); } catch {}
       // Scroll to bottom after hydration
       requestAnimationFrame(() => responseEndRef.current?.scrollIntoView({ behavior: "smooth" }));
@@ -436,86 +435,90 @@ export default function ChatClient({ user }: ChatClientProps) {
         </div>
 
         <div className="flex-1 overflow-y-auto p-3 md:p-4">
-          {messages.length === 0 ? (
-            <p className="text-sm text-gray-400">Start by typing a request below and press Enter or Send.</p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {messages.map((m) => {
-                const isUser = m.role === "user";
-                return (
-                  <div key={m.id} className={isUser ? "self-end" : "self-start"}>
-                    <div
-                      className={
-                        "relative max-w-[80%] whitespace-pre-wrap rounded-2xl px-4 py-3 pr-9 text-sm shadow-sm " +
-                        (isUser
-                          ? "rounded-br-sm bg-indigo-600 text-white"
-                          : "rounded-bl-sm bg-gray-800 text-gray-100")
-                      }
-                    >
-                      {m.content}
-                      <button
-                        type="button"
-                        aria-label="Copy message"
-                        onClick={() => void copyMessage(m.id, m.content)}
-                        className="absolute right-2 top-2 rounded p-1 opacity-70 transition-opacity hover:bg-white/10 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-white/20"
+          <div className="mx-auto w-full max-w-3xl">
+            {messages.length === 0 ? (
+              <p className="text-sm text-gray-400">Start by typing a request below and press Enter or Send.</p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {messages.map((m) => {
+                  const isUser = m.role === "user";
+                  return (
+                    <div key={m.id} className={isUser ? "self-end" : "self-start"}>
+                      <div
+                        className={
+                          "relative max-w-[80%] whitespace-pre-wrap break-words rounded-2xl px-4 py-3 pr-9 text-sm shadow-sm transition-[max-width,transform,background-color] duration-200 " +
+                          (isUser
+                            ? "rounded-br-sm bg-indigo-600 text-white"
+                            : "rounded-bl-sm bg-gray-800 text-gray-100")
+                        }
                       >
-                        {copiedId === m.id ? (
-                          <svg className="h-4 w-4 text-emerald-400" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                            <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        ) : (
-                          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                            <path d="M9 9h9v12H9z" stroke="currentColor" strokeWidth="1.5" fill="currentColor" opacity="0.2" />
-                            <path d="M6 3h9v12H6z" stroke="currentColor" strokeWidth="1.5" fill="currentColor" />
-                          </svg>
-                        )}
-                      </button>
+                        {m.content}
+                        <button
+                          type="button"
+                          aria-label="Copy message"
+                          onClick={() => void copyMessage(m.id, m.content)}
+                          className="absolute right-2 top-2 rounded p-1 opacity-70 transition-opacity hover:bg-white/10 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-white/20"
+                        >
+                          {copiedId === m.id ? (
+                            <svg className="h-4 w-4 text-emerald-400" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                              <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          ) : (
+                            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                              <path d="M9 9h9v12H9z" stroke="currentColor" strokeWidth="1.5" fill="currentColor" opacity="0.2" />
+                              <path d="M6 3h9v12H6z" stroke="currentColor" strokeWidth="1.5" fill="currentColor" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+                {loading && (
+                  <div className="self-start">
+                    <div className="relative max-w-[80%] rounded-2xl rounded-bl-sm bg-gray-800 px-4 py-3 pr-9 text-sm text-gray-100 shadow-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                        <span>Generating{".".repeat(genDots)}</span>
+                      </div>
                     </div>
                   </div>
-                );
-              })}
-              {loading && (
-                <div className="self-start">
-                  <div className="relative max-w-[80%] rounded-2xl rounded-bl-sm bg-gray-800 px-4 py-3 pr-9 text-sm text-gray-100 shadow-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                      <span>Generating{".".repeat(genDots)}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div ref={responseEndRef} />
-            </div>
-          )}
-          {error && (
-            <div className="mt-3 rounded-md border border-red-700 bg-red-900/30 p-3 text-sm text-red-300">{error}</div>
-          )}
+                )}
+                <div ref={responseEndRef} />
+              </div>
+            )}
+            {error && (
+              <div className="mt-3 rounded-md border border-red-700 bg-red-900/30 p-3 text-sm text-red-300">{error}</div>
+            )}
+          </div>
         </div>
 
         <div className="sticky bottom-0 z-10 border-t border-gray-800 bg-gray-900/80 px-3 py-3 backdrop-blur md:px-4">
-          <div className="flex items-end gap-3">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onInput={autoResize}
-              onChange={(e) => {
-                setInput(e.target.value);
-                // Ensure smooth growth while typing even if onInput coalesces
-                autoResize();
-              }}
-              onKeyDown={onKeyDown}
-              placeholder={mode === "build" ? "Describe what you want to build..." : "Paste your prompt to enhance..."}
-              className="flex-1 resize-none rounded-2xl border border-white/10 bg-gray-900/60 p-3 text-sm text-gray-100 shadow-sm transition-[height] duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-400/50"
-              rows={1}
-              style={{ maxHeight: MAX_INPUT_HEIGHT, overflowY: "auto" }}
-            />
-            <button
-              onClick={() => void send()}
-              disabled={!canSend}
-              className="rounded-lg bg-indigo-600 px-5 py-2.5 font-semibold text-white shadow-sm transition enabled:hover:bg-indigo-700 disabled:opacity-60"
-            >
-              Send
-            </button>
+          <div className="mx-auto w-full max-w-3xl">
+            <div className="flex items-end gap-3">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onInput={autoResize}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  // Ensure smooth growth while typing even if onInput coalesces
+                  autoResize();
+                }}
+                onKeyDown={onKeyDown}
+                placeholder={mode === "build" ? "Describe what you want to build..." : "Paste your prompt to enhance..."}
+                className="flex-1 resize-none rounded-2xl border border-white/10 bg-gray-900/60 p-3 text-sm text-gray-100 shadow-sm transition-[height] duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-400/50"
+                rows={1}
+                style={{ maxHeight: MAX_INPUT_HEIGHT, overflowY: "auto" }}
+              />
+              <button
+                onClick={() => void send()}
+                disabled={!canSend}
+                className="rounded-lg bg-indigo-600 px-5 py-2.5 font-semibold text-white shadow-sm transition enabled:hover:bg-indigo-700 disabled:opacity-60"
+              >
+                Send
+              </button>
+            </div>
           </div>
         </div>
 

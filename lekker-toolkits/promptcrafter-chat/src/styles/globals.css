@@ -4,3 +4,14 @@
 	--font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif,
 		"Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
+
+/* Stabilize layout when vertical scrollbar appears/disappears */
+html {
+	scrollbar-gutter: stable both-edges;
+}
+
+/* Improve long-token wrapping inside chat bubbles */
+.break-words {
+	overflow-wrap: break-word;
+	word-break: break-word;
+}
