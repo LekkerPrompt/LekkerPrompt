@@ -340,7 +340,7 @@ export default function ChatClient({ user }: ChatClientProps) {
   }, []);
 
   return (
-    <div className="relative flex min-h-svh w-full">
+    <div className="relative flex h-svh w-full overflow-hidden">
       {/* Sidebar backdrop (mobile only) */}
       <div
         className={cn(
@@ -353,8 +353,8 @@ export default function ChatClient({ user }: ChatClientProps) {
       {/* Sidebar */}
       <div
         className={cn(
-          // Mobile: slide-over
-          "fixed inset-y-0 left-0 z-40 w-80 -translate-x-full transform transition-transform duration-200 md:relative md:inset-auto md:transform-none md:transition-[width] md:duration-200 md:shrink-0",
+          // Mobile: slide-over; Desktop: sticky column
+          "fixed inset-y-0 left-0 z-40 w-80 -translate-x-full transform transition-transform duration-200 md:sticky md:top-0 md:h-svh md:inset-auto md:transform-none md:transition-[width] md:duration-200 md:shrink-0 md:overflow-y-auto",
           sidebarOpen ? "translate-x-0 md:w-80 md:pointer-events-auto" : "-translate-x-full md:w-0 md:overflow-hidden md:pointer-events-none"
         )}
       >
@@ -399,7 +399,7 @@ export default function ChatClient({ user }: ChatClientProps) {
       </div>
 
       {/* Chat area */}
-      <div className="flex min-h-svh flex-1 flex-col">
+      <div className="flex flex-1 min-h-0 flex-col">
         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-gray-800 bg-gray-900/80 px-4 py-3 backdrop-blur">
           <div className="flex items-center gap-3">
             <button
@@ -434,7 +434,7 @@ export default function ChatClient({ user }: ChatClientProps) {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3 md:p-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-3 md:p-4">
           <div className="mx-auto w-full max-w-3xl">
             {messages.length === 0 ? (
               <p className="text-sm text-gray-400">Start by typing a request below and press Enter or Send.</p>
