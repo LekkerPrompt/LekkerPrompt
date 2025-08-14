@@ -417,19 +417,20 @@ export default function ChatClient({ user }: ChatClientProps) {
             <button
               type="button"
               onClick={startNewChat}
-              className="inline-flex rounded-md border border-gray-700 px-3 py-1.5 text-sm text-gray-200 transition hover:border-indigo-500 hover:text-white"
+              className="inline-flex items-center gap-2 whitespace-nowrap rounded-md bg-indigo-600 px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400/50"
               aria-label="Start a new chat"
+              title="Start a new chat"
             >
               + New Chat
             </button>
             <button
               type="button"
               onClick={() => setHelpOpen(true)}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-700 text-gray-200 transition hover:border-indigo-500 hover:text-white"
-              aria-label="How to use"
-              title="How to use"
+              className="inline-flex items-center whitespace-nowrap rounded-md border border-indigo-500/50 bg-indigo-500/10 px-3 py-1.5 text-sm font-medium text-indigo-300 transition hover:bg-indigo-500/20 hover:text-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-400/30"
+              aria-label="Tutorial"
+              title="Tutorial"
             >
-              ?
+              Tutorial
             </button>
           </div>
         </div>
@@ -437,13 +438,13 @@ export default function ChatClient({ user }: ChatClientProps) {
         <div className="flex-1 min-h-0 overflow-y-auto p-3 md:p-4">
           <div className="mx-auto w-full max-w-3xl">
             {messages.length === 0 ? (
-              <p className="text-sm text-gray-400">Start by typing a request below and press Enter or Send.</p>
+              <p className="text-sm text-gray-400">Start by typing a request below and press Send.</p>
             ) : (
               <div className="flex flex-col gap-3">
                 {messages.map((m) => {
                   const isUser = m.role === "user";
                   return (
-                    <div key={m.id} className={isUser ? "self-end" : "self-start"}>
+                    <div key={m.id} className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}>
                       <div
                         className={
                           "relative max-w-[80%] whitespace-pre-wrap break-words rounded-2xl px-4 py-3 pr-9 text-sm shadow-sm transition-[max-width,transform,background-color] duration-200 " +
@@ -543,36 +544,42 @@ export default function ChatClient({ user }: ChatClientProps) {
               >
                 ✕
               </button>
-              <div className="mb-3 text-lg font-semibold">How to use</div>
+              <div className="mb-3 text-lg font-semibold">Tutorial</div>
               <div className="space-y-4 text-sm">
-                <div className="flex items-center gap-3 rounded-lg border border-gray-800 bg-gray-800/40 p-3">
+                <div className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-800/40 p-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600/20 text-indigo-300">💬</div>
                   <div className="flex-1">
-                    <div className="font-medium">Send a Message</div>
-                    <div className="mt-1 flex items-center gap-2 text-gray-300">
-                      <span className="text-xl">→</span>
-                      <span>Type in the input bar below and press Enter or click <span className="rounded border border-white/20 px-1 py-0.5">Send</span>.</span>
-                    </div>
+                    <div className="font-medium">Chat Basics</div>
+                    <ul className="mt-1 list-disc space-y-1 pl-5 text-gray-300">
+                      <li>Type your message and click <span className="rounded border border-white/20 px-1 py-0.5">Send</span> or press <span className="rounded border border-white/20 px-1 py-0.5">Enter</span> to send. Use <span className="rounded border border-white/20 px-1 py-0.5">Shift</span> + <span className="rounded border border-white/20 px-1 py-0.5">Enter</span> for a new line.</li>
+                      <li>Click the copy icon on any message to copy its contents.</li>
+                      <li>Use <span className="rounded border border-white/20 px-1 py-0.5">+ New Chat</span> to start a fresh conversation.</li>
+                    </ul>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 rounded-lg border border-gray-800 bg-gray-800/40 p-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-600/20 text-emerald-300">🗂️</div>
+                <div className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-800/40 p-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-600/20 text-emerald-300">🛠️</div>
                   <div className="flex-1">
-                    <div className="font-medium">Start a New Chat</div>
-                    <div className="mt-1 flex items-center gap-2 text-gray-300">
-                      <span className="text-xl">→</span>
-                      <span>Click the <span className="rounded border border-white/20 px-1 py-0.5">New Chat</span> button in the header.</span>
-                    </div>
+                    <div className="font-medium">Prompt Settings (Sidebar)</div>
+                    <ul className="mt-1 list-disc space-y-1 pl-5 text-gray-300">
+                      <li><strong>Mode</strong>: <em>Build</em> creates from scratch; <em>Enhance</em> improves an existing prompt.</li>
+                      <li><strong>Task</strong>: Choose the work type (General, Coding, Image, Research, Writing, Marketing). This reveals type‑specific options when relevant.</li>
+                      <li><strong>Tone, Detail, Format, Language</strong>: Control the voice, depth, output format, and language.</li>
+                      <li><strong>Temperature</strong>: Lower is precise, higher is creative.</li>
+                      <li><strong>Type‑specific</strong>: For Image choose <em>Style Preset</em> and <em>Aspect Ratio</em>. For Coding toggle <em>Include Tests</em>. For Research toggle <em>Require Citations</em>.</li>
+                      <li><strong>Presets</strong>: Save your current settings and quickly re‑apply them from the list.</li>
+                      <li>Open/close the sidebar with the menu button in the header.</li>
+                    </ul>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 rounded-lg border border-gray-800 bg-gray-800/40 p-3">
+                <div className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-800/40 p-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600/20 text-blue-300">📜</div>
                   <div className="flex-1">
-                    <div className="font-medium">View Chat History</div>
-                    <div className="mt-1 flex items-center gap-2 text-gray-300">
-                      <span className="text-xl">→</span>
-                      <span>Open the sidebar and select from your conversations list.</span>
-                    </div>
+                    <div className="font-medium">Chat History</div>
+                    <ul className="mt-1 list-disc space-y-1 pl-5 text-gray-300">
+                      <li>Your recent chats appear in the sidebar; select one to reopen it.</li>
+                      <li>Use the delete control in the sidebar to remove a chat.</li>
+                    </ul>
                   </div>
                 </div>
               </div>

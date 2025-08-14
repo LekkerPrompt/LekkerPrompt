@@ -12,6 +12,7 @@ html {
 
 /* Improve long-token wrapping inside chat bubbles */
 .break-words {
-	overflow-wrap: break-word;
-	word-break: break-word;
+	/* Allow breaking long tokens (like URLs) if needed, but do not break normal words */
+	overflow-wrap: anywhere;
+	word-break: normal;
 }
