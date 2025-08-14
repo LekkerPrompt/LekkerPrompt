@@ -46,6 +46,7 @@ export default function ChatClient({ user }: ChatClientProps) {
   const [genDots, setGenDots] = useState(1);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const MAX_INPUT_HEIGHT = 200;
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -83,11 +84,11 @@ export default function ChatClient({ user }: ChatClientProps) {
     const el = inputRef.current;
     if (!el) return;
     el.style.height = "auto";
-    const max = 200;
+    const max = MAX_INPUT_HEIGHT;
     const needed = Math.min(el.scrollHeight, max);
     el.style.height = `${needed}px`;
     el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
-  }, []);
+  }, [MAX_INPUT_HEIGHT]);
 
   // Close sidebar on Escape
   useEffect(() => {
@@ -100,6 +101,9 @@ export default function ChatClient({ user }: ChatClientProps) {
   }, [sidebarOpen]);
 
   useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
     autoResize();
   }, [autoResize]);
 
@@ -494,11 +498,16 @@ export default function ChatClient({ user }: ChatClientProps) {
               ref={inputRef}
               value={input}
               onInput={autoResize}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value);
+                // Ensure smooth growth while typing even if onInput coalesces
+                autoResize();
+              }}
               onKeyDown={onKeyDown}
               placeholder={mode === "build" ? "Describe what you want to build..." : "Paste your prompt to enhance..."}
               className="flex-1 resize-none rounded-2xl border border-white/10 bg-gray-900/60 p-3 text-sm text-gray-100 shadow-sm transition-[height] duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-400/50"
-              style={{ maxHeight: 200, overflowY: "auto" }}
+              rows={1}
+              style={{ maxHeight: MAX_INPUT_HEIGHT, overflowY: "auto" }}
             />
             <button
               onClick={() => void send()}

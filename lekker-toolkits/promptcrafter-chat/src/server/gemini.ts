@@ -55,6 +55,20 @@ const TYPE_GUIDELINES: Record<TaskType, string> = {
   ].join("\n"),
 };
 
+const MODE_GUIDELINES: Record<PromptMode, string> = {
+  build: [
+    "Mode objective: Generate a complete, production-ready prompt based on the user's goals and filters.",
+    "Respond only with the prompt (or the requested format). Do not include chitchat, preambles, or disclaimers.",
+    "Incorporate the selected tone, level of detail, format, and language strictly.",
+    "If some details are missing, make minimal, reasonable assumptions consistent with the task type.",
+  ].join("\n"),
+  enhance: [
+    "Mode objective: Refine and improve the user's provided prompt while preserving intent.",
+    "Strengthen clarity, structure, constraints, and evaluation criteria. Avoid changing core requirements.",
+    "Respond only with the revised prompt (or the requested format). Do not add commentary unless explicitly requested.",
+  ].join("\n"),
+};
+
 export async function callGemini({ input, mode, taskType, options }: GeminiChatInput): Promise<string> {
   const perModePrompt = await readSystemPromptForModeFromDb(mode);
   const envFallback =
@@ -81,21 +95,25 @@ export async function callGemini({ input, mode, taskType, options }: GeminiChatI
 
   const combinedPrompt = [
     systemPrompt ? `System instructions:\n${systemPrompt}` : null,
+    MODE_GUIDELINES[mode] ? `Mode guidelines:\n${MODE_GUIDELINES[mode]}` : null,
     `Mode: ${mode.toUpperCase()}`,
     `Task type: ${taskType}`,
     typeGuidelines ? `Type guidelines:\n${typeGuidelines}` : null,
     optionLines.length ? `Constraints:\n- ${optionLines.join("\n- ")}` : null,
     `User input:\n${input}`,
     options?.format === "json"
-      ? "Return only a single valid JSON object without markdown code fences."
-      : null,
+      ? [
+          "Return only a single valid JSON object without markdown code fences.",
+          "Do not include comments, trailing commas, or additional text before/after the JSON.",
+        ].join(" \n")
+      : "Do not include preambles or explanations unless explicitly requested.",
   ]
     .filter(Boolean)
     .join("\n\n");
 
   const url = `${env.GOOGLE_GEMINI_BASE_URL}?key=${encodeURIComponent(env.GOOGLE_GEMINI_API_KEY)}`;
 
-  const payload = {
+  const payload: any = {
     contents: [
       {
         role: "user",
@@ -103,6 +121,13 @@ export async function callGemini({ input, mode, taskType, options }: GeminiChatI
       },
     ],
   };
+
+  // Pass generation config for better control/consistency
+  if (typeof options?.temperature === "number") {
+    payload.generationConfig = {
+      temperature: options.temperature,
+    };
+  }
 
   const res = await fetch(url, {
     method: "POST",

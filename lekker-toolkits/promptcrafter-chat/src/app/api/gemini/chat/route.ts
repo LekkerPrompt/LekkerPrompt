@@ -41,6 +41,18 @@ export async function POST(req: Request) {
   }
 
   try {
+    // Simple guardrail: if user is trying to casually chat rather than craft prompts,
+    // respond with a consistent message and skip model call.
+    const normalized = parsed.input.trim().toLowerCase();
+    const looksLikeSmallTalk = /^(hi|hey|hello|how\s+are\s+you|what's\s+up|sup|yo)[!.\s]*$/i.test(parsed.input.trim())
+      || /^(tell\s+me\s+about\s+yourself|who\s+are\s+you)/i.test(normalized)
+      || (parsed.taskType === "general" && normalized.split(/\s+/).length <= 4 && /^(ok|k|thanks|thank\s+you|nice|cool|great)$/i.test(parsed.input.trim()));
+
+    if (looksLikeSmallTalk) {
+      const info = "This is PromptCrafter Chat — a focused assistant for crafting, refining, and validating AI prompts. Describe what you want to build or paste a prompt to enhance.";
+      return NextResponse.json({ output: info });
+    }
+
     const output = await callGemini({
       input: parsed.input,
       mode: parsed.mode as PromptMode,
