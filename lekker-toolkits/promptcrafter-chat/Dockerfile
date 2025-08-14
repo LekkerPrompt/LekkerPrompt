@@ -73,9 +73,7 @@ ENV NODE_ENV=production \
     AUTH_TRUST_HOST=true \
     UNDICI_NO_WASM=1
 
-# Non-root user
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 --ingroup nodejs node
+# Use the pre-existing non-root 'node' user from the base image
 
 WORKDIR /app
 
