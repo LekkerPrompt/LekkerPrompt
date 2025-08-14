@@ -1,4 +1,4 @@
-your.domain {
+promptcrafter.sammyhamwi.ai {
   reverse_proxy app:3000
 }
 
