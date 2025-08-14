@@ -5,6 +5,7 @@ services:
     env_file:
       - .env
     environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
@@ -15,7 +16,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
-      start_period: 10s
+      start_period: 15s
 
   app:
     build:
