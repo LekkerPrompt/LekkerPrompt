@@ -3,15 +3,13 @@
 </p>
 
 <p align="center">
-  Master LLM interaction with LekkerPrompt <br> An open source library of toolkits and resources for advanced prompt and context engineering.
+  Master LLM / AI interaction with LekkerPrompt <br> An open source library of toolkits and resources for advanced prompt and context engineering.
 </p>
 
 <div align="center">
-  <a href="https://github.com/sammyhamwi/LekkerPrompt">Home</a> | <a href="https://github.com/sammyhamwi/LekkerPrompt/issues">Report an Issue</a>
+  <a href="https://github.com/LekkerPrompt/LekkerPrompt">Home</a> | <a href="https://github.com/LekkerPrompt/LekkerPrompt/issues">Report an Issue</a>
 </div>
 
----
+# LekkerPrompt Approved External Resources/Guides
 
-## external-guides/ DIRECTORY IN PROGRESS
-
----
+Guides in progress!

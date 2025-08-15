@@ -3,20 +3,18 @@
 </p>
 
 <p align="center">
-  Master LLM interaction with LekkerPrompt <br> An open source library of toolkits and resources for advanced prompt and context engineering.
+  Master LLM / AI interaction with LekkerPrompt <br> An open source library of toolkits and resources for advanced prompt and context engineering.
 </p>
 
 <div align="center">
-  <a href="https://github.com/sammyhamwi/LekkerPrompt">Home</a> | <a href="https://github.com/sammyhamwi/LekkerPrompt/issues">Report an Issue</a>
+  <a href="https://github.com/LekkerPrompt/LekkerPrompt">Home</a> | <a href="https://github.com/LekkerPrompt/LekkerPrompt/issues">Report an Issue</a>
 </div>
-
----
 
 # LekkerPrompt: PromptCrafter AI Chat App
 
 PromptCrafter AI Chat is a focused web app for crafting, refining, and validating AI prompts. It provides two modes — Build and Enhance — plus task-specific options (coding, image, research, writing, marketing). Users can save reusable presets, manage chat history, and configure system prompts per mode.
 
-Built using the t3 app stack; with Next.js App Router, NextAuth (email/Discord), Prisma (MySQL), tRPC, Tailwind CSS, and a Gemini-compatible backend.
+Built using the 🔗[T3-App Stack](https://github.com/t3-oss/create-t3-app) with Next.js App Router, NextAuth (email/Discord), Prisma (MySQL), tRPC, Tailwind CSS, and a Gemini-compatible backend.
 
 ## Features
 
@@ -30,11 +28,11 @@ Built using the t3 app stack; with Next.js App Router, NextAuth (email/Discord),
 
 ## Stack
 
-- [Next.js](https://nextjs.org)
-- [NextAuth.js](https://next-auth.js.org)
-- [Prisma](https://prisma.io)
-- [Tailwind CSS](https://tailwindcss.com)
-- [tRPC](https://trpc.io)
+- 🔗[Next.js](https://nextjs.org)
+- 🔗[NextAuth.js](https://next-auth.js.org)
+- 🔗[Prisma](https://prisma.io)
+- 🔗[Tailwind CSS](https://tailwindcss.com)
+- 🔗[tRPC](https://trpc.io)
 
 ## Getting Started
 
@@ -192,4 +190,4 @@ npm run db:migrate    # apply migrations (deploy)
 
 ## Credits
 
-Created by [Sammy](https://sammyhamwi.ai) for open source use in LekkerPrompt toolkit library.
+Created by 🔗[Sammy](https://sammyhamwi.ai) for open source use in [LekkerPrompt](https://github.com/LekkerPrompt/LekkerPrompt) toolkit library.

@@ -7,7 +7,7 @@
 </p>
 
 <div align="center">
-  <a href="https://github.com/sammyhamwi/LekkerPrompt">Home</a> | <a href="https://github.com/sammyhamwi/LekkerPrompt/issues">Report an Issue</a>
+  <a href="https://github.com/LekkerPrompt/LekkerPrompt">Home</a> | <a href="https://github.com/LekkerPrompt/LekkerPrompt/issues">Report an Issue</a>
 </div>
 
 ## About LekkerPrompt
@@ -70,7 +70,7 @@ This structure ensures a clear separation between internally developed and exter
 
 ## Look Around!
 
-1.  **Set Up Your Copilot Space**: Navigate to the 🔗[`promptcrafter-space/`](https://github.com/sammyhamwi/LekkerPrompt/tree/master/lekker-toolkits/promptcrafter-space) directory and follow the set up instructions to make a minimal PromptCrafter chat in 🔗[Copilot Space](https://github.com/copilot/spaces).
+1.  **Set Up Your Copilot Space**: Navigate to the 🔗[`promptcrafter-space/`](https://github.com/LekkerPrompt/LekkerPrompt/tree/master/lekker-toolkits/promptcrafter-space) directory and follow the set up instructions to make a minimal PromptCrafter chat in 🔗[Copilot Space](https://github.com/copilot/spaces).
 2.  **Learn and Enhance**: Use the materials in the resource library to sharpen your prompt and context engineering skills.
 3.  **Stay Updated**: **Follow** and **star** the repository for updates as new toolkits are added. 
 > _Your support means a lot to a new open source creator! :blue_heart:_
@@ -79,7 +79,7 @@ This structure ensures a clear separation between internally developed and exter
 
 LekkerPrompt is a community-driven, open source initiative, and your contributions are highly valued. Here’s how you can help:
 
--   **Propose Ideas**: Share your expertise by suggesting new prompts or resources via 🔗[Issues](https://github.com/sammyhamwi/LekkerPrompt/issues).
+-   **Propose Ideas**: Share your expertise by suggesting new prompts or resources via 🔗[Issues](https://github.com/LekkerPrompt/LekkerPrompt/issues).
 -   **Submit Pull Requests**: Contribute directly with fixes, new features, or enhancements.
 -   **Provide Feedback**: Help shape the project's direction with your feedback and suggestions.
 
