@@ -106,6 +106,13 @@ export async function callGemini({ input, mode, taskType, options }: GeminiChatI
           "Return only a single valid JSON object without markdown code fences.",
           "Do not include comments, trailing commas, or additional text before/after the JSON.",
         ].join(" \n")
+      : options?.format === "markdown"
+      ? [
+          "Return the response strictly as Markdown.",
+          "Use fenced code blocks for any code (e.g., ```json, ```markdown, ```bash).",
+          "Do not wrap the entire response in a single code fence unless the whole output is code.",
+          "Avoid preambles; provide only the content requested in Markdown.",
+        ].join(" \n")
       : "Do not include preambles or explanations unless explicitly requested.",
   ]
     .filter(Boolean)

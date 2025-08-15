@@ -20,6 +20,7 @@ const OptionsSchema = z.object({
 }).partial();
 
 const BodySchema = z.object({
+  id: z.string().optional(),
   name: z.string().min(1).max(100),
   mode: z.enum(["build", "enhance"]),
   taskType: z.enum(["general", "coding", "image", "research", "writing", "marketing"]),
@@ -29,7 +30,7 @@ const BodySchema = z.object({
 export async function GET() {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const presets = await db.promptPreset.findMany({
+  const presets = await (db as any).promptPreset.findMany({
     where: { userId: session.user.id },
     orderBy: { updatedAt: "desc" },
     select: { id: true, name: true, mode: true, taskType: true, options: true, updatedAt: true },
@@ -47,22 +48,39 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
 
-  const preset = await db.promptPreset.upsert({
-    where: { userId_name: { userId: session.user.id, name: parsed.name } },
-    create: {
-      userId: session.user.id,
-      name: parsed.name,
-      mode: parsed.mode,
-      taskType: parsed.taskType,
-      options: parsed.options ?? {},
-    },
-    update: {
-      mode: parsed.mode,
-      taskType: parsed.taskType,
-      options: parsed.options ?? {},
-    },
-    select: { id: true, name: true, mode: true, taskType: true, options: true, updatedAt: true },
-  });
+  // If id is provided, rename/update the record by id (ensures true rename semantics)
+  let preset;
+  if (parsed.id) {
+    // Ensure ownership and update
+    preset = await (db as any).promptPreset.update({
+      where: { id: parsed.id, userId: session.user.id } as any,
+      data: {
+        name: parsed.name,
+        mode: parsed.mode,
+        taskType: parsed.taskType,
+        options: parsed.options ?? {},
+      },
+      select: { id: true, name: true, mode: true, taskType: true, options: true, updatedAt: true },
+    });
+  } else {
+    // Create or update by unique (userId, name)
+    preset = await (db as any).promptPreset.upsert({
+      where: { userId_name: { userId: session.user.id, name: parsed.name } },
+      create: {
+        userId: session.user.id,
+        name: parsed.name,
+        mode: parsed.mode,
+        taskType: parsed.taskType,
+        options: parsed.options ?? {},
+      },
+      update: {
+        mode: parsed.mode,
+        taskType: parsed.taskType,
+        options: parsed.options ?? {},
+      },
+      select: { id: true, name: true, mode: true, taskType: true, options: true, updatedAt: true },
+    });
+  }
 
   return NextResponse.json({ preset });
 }
@@ -74,7 +92,7 @@ export async function DELETE(req: Request) {
   const id = url.searchParams.get("id");
   const name = url.searchParams.get("name");
   if (!id && !name) return NextResponse.json({ error: "id or name is required" }, { status: 400 });
-  await db.promptPreset.deleteMany({ where: { userId: session.user.id, OR: [{ id: id ?? undefined }, { name: name ?? undefined }] } });
+  await (db as any).promptPreset.deleteMany({ where: { userId: session.user.id, OR: [{ id: id ?? undefined }, { name: name ?? undefined }] } });
   return NextResponse.json({ ok: true });
 }
 

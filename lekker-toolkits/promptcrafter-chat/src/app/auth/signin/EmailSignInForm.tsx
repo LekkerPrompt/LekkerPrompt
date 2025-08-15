@@ -19,9 +19,9 @@ export default function EmailSignInForm() {
       setSubmitting(true);
       const res = await signIn("email", { email, callbackUrl: "/chat", redirect: false });
       if (res?.error) {
-        setMessage("Failed to send magic link. Please try again.");
+        setMessage("Failed to send magic link. Please try again or use Discord to sign in.");
       } else {
-        setMessage("Check your inbox for a sign-in link.");
+        setMessage("Check your inbox for a sign-in link. If you don't see it, check your spam folder.");
       }
     } finally {
       setSubmitting(false);

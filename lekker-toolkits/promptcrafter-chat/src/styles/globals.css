@@ -16,3 +16,61 @@ html {
 	overflow-wrap: anywhere;
 	word-break: normal;
 }
+
+/* Markdown content styling inside bubbles */
+.prose pre code, .message-prose pre code {
+	white-space: pre;
+}
+.prose code, .message-prose code {
+	word-break: normal;
+	overflow-wrap: anywhere;
+}
+
+/* Ensure code blocks and long words don't overflow on mobile */
+.message-prose, .message-prose * {
+	min-width: 0;
+	max-width: 100%;
+}
+.message-prose pre {
+	max-width: 100%;
+	overflow-x: auto;
+	white-space: pre;
+}
+.message-prose p {
+	max-width: 100%;
+}
+
+/* Hide scrollbars but keep scrolling */
+html, body {
+	-ms-overflow-style: none;
+	scrollbar-width: none;
+}
+html::-webkit-scrollbar, body::-webkit-scrollbar {
+	display: none;
+}
+.global-scrollbar-hide, * {
+	/* Firefox */
+	scrollbar-width: none;
+	/* IE/Edge legacy */
+	-ms-overflow-style: none;
+}
+*::-webkit-scrollbar {
+	/* Chrome/Safari/Opera */
+	display: none;
+	width: 0;
+	height: 0;
+}
+.no-scrollbar {
+	-ms-overflow-style: none;
+	scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+	display: none;
+}
+.message-prose pre::-webkit-scrollbar {
+	display: none;
+}
+.message-prose pre {
+	-ms-overflow-style: none;
+	scrollbar-width: none;
+}

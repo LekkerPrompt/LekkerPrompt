@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import FiltersSidebar from "./FiltersSidebar";
 import { api } from "@/trpc/react";
 
@@ -40,6 +40,7 @@ export default function ChatClient({ user }: ChatClientProps) {
   const [presets, setPresets] = useState<Array<{ id?: string; name: string; mode: Mode; taskType: TaskType; options?: any }>>([]);
   const [loadingPresets, setLoadingPresets] = useState(false);
   const [selectedPresetKey, setSelectedPresetKey] = useState("");
+  const [defaultPresetId, setDefaultPresetId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -50,6 +51,110 @@ export default function ChatClient({ user }: ChatClientProps) {
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const renderMessageContent = useCallback((text: string, messageId?: string) => {
+    const trimmed = text.trim();
+
+    // 1) If entire message is valid JSON (no fences), show as JSON code block
+    const looksLikeJson = (s: string) => (s.startsWith("{") && s.endsWith("}")) || (s.startsWith("[") && s.endsWith("]"));
+    if (looksLikeJson(trimmed)) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        const pretty = JSON.stringify(parsed, null, 2);
+        return (
+          <div className="message-prose max-w-none">
+            <div className="my-2 overflow-hidden rounded-lg border border-white/10 bg-black/30">
+              <div className="flex items-center justify-between border-b border-white/10 bg-black/20 px-3 py-1.5 text-[11px] text-gray-300">
+                <span className="uppercase tracking-wider">json</span>
+              </div>
+              <pre className="overflow-x-auto p-3 text-[13px]" style={{ maxWidth: "100%" }}>
+                <code className="block leading-6" style={{ display: "block", maxWidth: "100%" }}>{pretty}</code>
+              </pre>
+            </div>
+          </div>
+        );
+      } catch {
+        // fall through to fence parsing
+      }
+    }
+
+    // 2) Parse fenced code blocks (always on)
+    const elements: ReactNode[] = [];
+    const codeRegex = /```([a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = codeRegex.exec(text)) !== null) {
+      const [full, langRaw, code] = match;
+      const start = match.index;
+      const end = start + full.length;
+      if (start > lastIndex) {
+        const before = text.slice(lastIndex, start);
+        if (before.trim().length > 0) {
+          elements.push(
+            <p key={`t-${lastIndex}`} className="whitespace-pre-wrap break-words leading-relaxed">
+              {before}
+            </p>
+          );
+        }
+      }
+      const lang = (langRaw || "code").toLowerCase();
+      const codeKey = `code-${messageId ?? "msg"}-${start}`;
+      elements.push(
+        <div key={`c-${start}`} className="my-2 overflow-hidden rounded-lg border border-white/10 bg-black/30">
+          <div className="flex items-center justify-between border-b border-white/10 bg-black/20 px-3 py-1.5 text-[11px] text-gray-300">
+            <span className="uppercase tracking-wider">{lang}</span>
+            <button
+              type="button"
+              aria-label="Copy code"
+              title="Copy code"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(String(code));
+                  setCopiedId(codeKey);
+                  window.setTimeout(() => {
+                    setCopiedId((prev) => (prev === codeKey ? null : prev));
+                  }, 2000);
+                } catch {
+                  // noop
+                }
+              }}
+              className="rounded p-1 text-gray-300/80 transition hover:bg-white/10 hover:text-white"
+            >
+              {copiedId === codeKey ? (
+                <svg className="h-4 w-4 text-emerald-400" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              ) : (
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M9 9h9v12H9z" stroke="currentColor" strokeWidth="1.5" fill="currentColor" opacity="0.2" />
+                  <path d="M6 3h9v12H6z" stroke="currentColor" strokeWidth="1.5" fill="currentColor" />
+                </svg>
+              )}
+            </button>
+          </div>
+          <pre className="overflow-x-auto p-3 text-[13px]" style={{ maxWidth: "100%" }}><code className="block leading-6" style={{ display: "block", maxWidth: "100%" }}>{code}</code></pre>
+        </div>
+      );
+      lastIndex = end;
+    }
+    if (elements.length > 0) {
+      if (lastIndex < text.length) {
+        const rest = text.slice(lastIndex);
+        if (rest.trim().length > 0) {
+          elements.push(
+            <p key={`t-${lastIndex}-end`} className="whitespace-pre-wrap break-words leading-relaxed">
+              {rest}
+            </p>
+          );
+        }
+      }
+      return <div className="message-prose max-w-none">{elements}</div>;
+    }
+
+    // 3) Fallback: show as text, preserving newlines
+    return <p className="whitespace-pre-wrap break-words leading-relaxed">{text}</p>;
+  }, [setCopiedId, copiedId]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
 
   // tRPC utilities and queries for chats
@@ -68,6 +173,10 @@ export default function ChatClient({ user }: ChatClientProps) {
   });
 
   const responseEndRef = useRef<HTMLDivElement | null>(null);
+
+  const currentPreset = useMemo(() => {
+    return presets.find((p) => (p.id ?? p.name) === selectedPresetKey) ?? null;
+  }, [presets, selectedPresetKey]);
 
   useEffect(() => {
     responseEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -111,16 +220,48 @@ export default function ChatClient({ user }: ChatClientProps) {
     const load = async () => {
       setLoadingPresets(true);
       try {
-        const res = await fetch("/api/presets");
+        const [res, defRes] = await Promise.all([
+          fetch("/api/presets"),
+          fetch("/api/presets/default").catch(() => null),
+        ]);
+        let defaultId: string | null = null;
+        if (defRes && defRes.ok) {
+          const d = await defRes.json().catch(() => ({}));
+          defaultId = typeof d?.defaultPresetId === "string" ? d.defaultPresetId : null;
+        }
+        setDefaultPresetId(defaultId);
         if (res.ok) {
           const data = await res.json();
-          setPresets(data.presets ?? []);
+          const list = data.presets ?? [];
+          setPresets(list);
+          // Auto-select default or first preset
+          if (!selectedPresetKey) {
+            const pick = (defaultId && list.find((p: any) => p.id === defaultId)) || list[0] || null;
+            if (pick) {
+              setSelectedPresetKey(pick.id ?? pick.name);
+              const p = list.find((x: any) => (x.id ?? x.name) === (pick.id ?? pick.name));
+              if (p) applyPreset(p);
+            }
+          }
         }
       } finally {
         setLoadingPresets(false);
       }
     };
     void load();
+  }, []);
+
+  const reloadPresets = useCallback(async () => {
+    setLoadingPresets(true);
+    try {
+      const res = await fetch("/api/presets");
+      if (res.ok) {
+        const data = await res.json();
+        setPresets(data.presets ?? []);
+      }
+    } finally {
+      setLoadingPresets(false);
+    }
   }, []);
 
   // Optional: restore last opened chat id from local storage (no writes back)
@@ -361,12 +502,18 @@ export default function ChatClient({ user }: ChatClientProps) {
         <FiltersSidebar
           user={user}
           onClose={() => setSidebarOpen(false)}
+          openTutorial={() => setHelpOpen(true)}
+          openAccount={() => setAccountOpen(true)}
+          openInfo={() => setInfoOpen(true)}
           presets={presets}
           selectedPresetKey={selectedPresetKey}
           setSelectedPresetKey={setSelectedPresetKey}
           loadingPresets={loadingPresets}
           applyPreset={applyPreset}
           savePreset={savePreset}
+          refreshPresets={reloadPresets}
+          defaultPresetId={defaultPresetId}
+          setDefaultPresetId={setDefaultPresetId}
           presetName={presetName}
           setPresetName={setPresetName}
           chats={useMemo(() => (chatList ?? []).map((c: { id: string; title?: string | null; updatedAt: string | Date; messageCount?: number; _count?: { messages: number } }) => ({ id: c.id, title: c.title ?? "Untitled", updatedAt: (typeof c.updatedAt === "string" ? new Date(c.updatedAt).getTime() : (c.updatedAt as Date).getTime()), messageCount: c.messageCount ?? (c._count?.messages ?? 0) })), [chatList])}
@@ -411,7 +558,7 @@ export default function ChatClient({ user }: ChatClientProps) {
             >
               ☰
             </button>
-            <div className="text-lg font-semibold text-blue-400">PromptCrafter <i>by sammyhamwi.ai</i></div>
+            <div className="text-lg font-semibold text-blue-400">PromptCrafter by <a href="https://sammyhamwi.ai" target="_blank" className="text-blue-400 underline"><i>sammyhamwi.ai</i></a></div>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -423,15 +570,38 @@ export default function ChatClient({ user }: ChatClientProps) {
             >
               + New Chat
             </button>
-            <button
-              type="button"
-              onClick={() => setHelpOpen(true)}
-              className="inline-flex items-center whitespace-nowrap rounded-md border border-indigo-500/50 bg-indigo-500/10 px-3 py-1.5 text-sm font-medium text-indigo-300 transition hover:bg-indigo-500/20 hover:text-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-400/30"
-              aria-label="Tutorial"
-              title="Tutorial"
-            >
-              Tutorial
-            </button>
+          </div>
+        </div>
+
+        {/* Mobile preset row below header */}
+        <div className="sm:hidden border-b border-gray-800 bg-gray-900/80 px-3 py-2">
+          <div className="mx-auto w-full max-w-3xl">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] uppercase tracking-wider text-gray-400">Preset</span>
+              <div className="relative flex-1">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs">{defaultPresetId && currentPreset?.id === defaultPresetId ? "★" : "🎛️"}</span>
+                <select
+                  value={selectedPresetKey}
+                  onChange={(e) => {
+                    const key = e.target.value;
+                    setSelectedPresetKey(key);
+                    const p = presets.find((x) => (x.id ?? x.name) === key);
+                    if (p) applyPreset(p);
+                  }}
+                  aria-label="Apply preset"
+                  title={currentPreset?.name || "Apply preset"}
+                  className="w-full appearance-none rounded-full border border-white/10 bg-gray-900/60 pl-8 pr-7 py-2 text-xs text-gray-200 shadow-sm transition hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-400/40"
+                >
+                  <option value="" disabled>Apply preset…</option>
+                  {presets.map((p) => (
+                    <option key={p.id ?? p.name} value={p.id ?? p.name}>
+                      {(defaultPresetId && p.id === defaultPresetId) ? "(Default) " : ""}{p.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">▾</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -447,13 +617,13 @@ export default function ChatClient({ user }: ChatClientProps) {
                     <div key={m.id} className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}>
                       <div
                         className={
-                          "relative max-w-[80%] whitespace-pre-wrap break-words rounded-2xl px-4 py-3 pr-9 text-sm shadow-sm transition-[max-width,transform,background-color] duration-200 " +
+                          "relative min-w-0 max-w-[92vw] sm:max-w-[85%] md:max-w-[80%] whitespace-pre-wrap break-words rounded-2xl px-4 py-3 pr-9 text-sm shadow-sm transition-[max-width,transform,background-color] duration-200 " +
                           (isUser
                             ? "rounded-br-sm bg-indigo-600 text-white"
                             : "rounded-bl-sm bg-gray-800 text-gray-100")
                         }
                       >
-                        {m.content}
+                        {renderMessageContent(m.content, m.id)}
                         <button
                           type="button"
                           aria-label="Copy message"
@@ -497,6 +667,30 @@ export default function ChatClient({ user }: ChatClientProps) {
         <div className="sticky bottom-0 z-10 border-t border-gray-800 bg-gray-900/80 px-3 py-3 backdrop-blur md:px-4">
           <div className="mx-auto w-full max-w-3xl">
             <div className="flex items-end gap-3">
+              <div className="relative hidden sm:block">
+                <label className="sr-only">Preset</label>
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs">{defaultPresetId && currentPreset?.id === defaultPresetId ? "★" : "🎛️"}</span>
+                <select
+                  value={selectedPresetKey}
+                  onChange={(e) => {
+                    const key = e.target.value;
+                    setSelectedPresetKey(key);
+                    const p = presets.find((x) => (x.id ?? x.name) === key);
+                    if (p) applyPreset(p);
+                  }}
+                  aria-label="Apply preset"
+                  title={currentPreset?.name || "Apply preset"}
+                  className="w-64 h-11 shrink-0 appearance-none rounded-2xl border border-white/10 bg-gray-900/60 pl-8 pr-8 text-xs text-gray-200 shadow-sm transition hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-400/40"
+                >
+                  <option value="" disabled>Apply preset…</option>
+                  {presets.map((p) => (
+                    <option key={p.id ?? p.name} value={p.id ?? p.name}>
+                      {(defaultPresetId && p.id === defaultPresetId) ? "(Default) " : ""}{p.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">▾</span>
+              </div>
               <textarea
                 ref={inputRef}
                 value={input}
@@ -507,7 +701,7 @@ export default function ChatClient({ user }: ChatClientProps) {
                   autoResize();
                 }}
                 onKeyDown={onKeyDown}
-                placeholder={mode === "build" ? "Describe what you want to build..." : "Paste your prompt to enhance..."}
+                placeholder={mode === "build" ? "Describe the prompt you want to build..." : "Paste a prompt to enhance it..."}
                 className="flex-1 resize-none rounded-2xl border border-white/10 bg-gray-900/60 p-3 text-sm text-gray-100 shadow-sm transition-[height] duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-400/50"
                 rows={1}
                 style={{ maxHeight: MAX_INPUT_HEIGHT, overflowY: "auto" }}
@@ -523,66 +717,162 @@ export default function ChatClient({ user }: ChatClientProps) {
           </div>
         </div>
 
-        {helpOpen && (
+        {(helpOpen || accountOpen || infoOpen) && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center"
             aria-modal="true"
             role="dialog"
-            aria-label="How to use PromptCrafter"
+            aria-label={helpOpen ? "How to use PromptCrafter" : infoOpen ? "Prompt settings info" : "Account"}
           >
-            <div className="absolute inset-0 bg-black/60" onClick={() => setHelpOpen(false)} />
+            <div className="absolute inset-0 bg-black/60" onClick={() => { setHelpOpen(false); setAccountOpen(false); setInfoOpen(false); }} />
             <div
-              className="relative z-10 w-[92vw] max-w-xl rounded-xl border border-white/10 bg-gray-900 p-5 text-gray-100 shadow-2xl"
+              className="relative z-10 w-[92vw] max-w-xl rounded-xl border border-white/10 bg-gray-900 p-5 text-gray-100 shadow-2xl max-h-[85vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
               <button
                 type="button"
-                onClick={() => setHelpOpen(false)}
+                onClick={() => { setHelpOpen(false); setAccountOpen(false); setInfoOpen(false); }}
                 className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-700 text-gray-300 transition hover:border-red-500 hover:text-white"
                 aria-label="Close help"
                 title="Close"
               >
                 ✕
               </button>
-              <div className="mb-3 text-lg font-semibold">Tutorial</div>
+              <div className="mb-3 text-lg font-semibold">{helpOpen ? "Tutorial" : infoOpen ? "Prompt Settings Info" : "Account"}</div>
+              {helpOpen ? (
               <div className="space-y-4 text-sm">
                 <div className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-800/40 p-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600/20 text-indigo-300">💬</div>
                   <div className="flex-1">
                     <div className="font-medium">Chat Basics</div>
                     <ul className="mt-1 list-disc space-y-1 pl-5 text-gray-300">
-                      <li>Type your message and click <span className="rounded border border-white/20 px-1 py-0.5">Send</span> or press <span className="rounded border border-white/20 px-1 py-0.5">Enter</span> to send. Use <span className="rounded border border-white/20 px-1 py-0.5">Shift</span> + <span className="rounded border border-white/20 px-1 py-0.5">Enter</span> for a new line.</li>
-                      <li>Click the copy icon on any message to copy its contents.</li>
-                      <li>Use <span className="rounded border border-white/20 px-1 py-0.5">+ New Chat</span> to start a fresh conversation.</li>
+                      <li>Type your message and click <span className="rounded border border-white/20 px-1 py-0.5">Send</span> or press <span className="rounded border border-white/20 px-1 py-0.5">Enter</span>. Use <span className="rounded border border-white/20 px-1 py-0.5">Shift</span> + <span className="rounded border border-white/20 px-1 py-0.5">Enter</span> for a new line.</li>
+                      <li>Use the preset selector near the input (mobile: above, desktop: left of the input) to quickly apply saved settings. Defaults show as <em>(Default)</em>.</li>
+                      <li>Click <span className="rounded border border-white/20 px-1 py-0.5">ℹ️ Info</span> above <em>Preset Name</em> to learn what each setting does.</li>
+                      <li>Code/JSON/Markdown blocks render with a copy button; copying excludes the triple backticks.</li>
                     </ul>
                   </div>
                 </div>
                 <div className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-800/40 p-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-600/20 text-emerald-300">🛠️</div>
                   <div className="flex-1">
-                    <div className="font-medium">Prompt Settings (Sidebar)</div>
+                    <div className="font-medium">Prompt Settings & Presets</div>
                     <ul className="mt-1 list-disc space-y-1 pl-5 text-gray-300">
-                      <li><strong>Mode</strong>: <em>Build</em> creates from scratch; <em>Enhance</em> improves an existing prompt.</li>
-                      <li><strong>Task</strong>: Choose the work type (General, Coding, Image, Research, Writing, Marketing). This reveals type‑specific options when relevant.</li>
-                      <li><strong>Tone, Detail, Format, Language</strong>: Control the voice, depth, output format, and language.</li>
-                      <li><strong>Temperature</strong>: Lower is precise, higher is creative.</li>
-                      <li><strong>Type‑specific</strong>: For Image choose <em>Style Preset</em> and <em>Aspect Ratio</em>. For Coding toggle <em>Include Tests</em>. For Research toggle <em>Require Citations</em>.</li>
-                      <li><strong>Presets</strong>: Save your current settings and quickly re‑apply them from the list.</li>
-                      <li>Open/close the sidebar with the menu button in the header.</li>
+                      <li><strong>Preset Name</strong> is editable in the settings grid. Change it and click <em>Update</em> to rename the selected preset.</li>
+                      <li><strong>Add New Preset</strong> resets to app defaults so you can create a fresh preset. <strong>Duplicate Preset</strong> switches to Add mode pre-filled from the selected preset (with <em>(copy)</em> appended).</li>
+                      <li><strong>Update</strong> enables when any field or the name changes. <strong>Delete</strong> asks for confirmation.</li>
+                      <li><strong>Set as default</strong> marks the selected preset as default. On load, your default (or the first preset) is auto-selected.</li>
+                      <li><strong>Type-specific options</strong> appear based on <em>Type</em> (e.g., Coding: <em>Include tests</em>; Image: <em>Image Style</em> and <em>Aspect Ratio</em>; Research: <em>Require citations</em>).</li>
                     </ul>
                   </div>
                 </div>
                 <div className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-800/40 p-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600/20 text-blue-300">📜</div>
                   <div className="flex-1">
-                    <div className="font-medium">Chat History</div>
+                    <div className="font-medium">Chats</div>
                     <ul className="mt-1 list-disc space-y-1 pl-5 text-gray-300">
-                      <li>Your recent chats appear in the sidebar; select one to reopen it.</li>
-                      <li>Use the delete control in the sidebar to remove a chat.</li>
+                      <li>Your chat history is in the Chats tab. Click a chat to reopen it; use the <span className="rounded border border-white/20 px-1 py-0.5">Select</span> mode to export and delete chats.</li>
+                      <li>Click <span className="rounded border border-white/20 px-1 py-0.5">+ New Chat</span> to start fresh.</li>
                     </ul>
                   </div>
                 </div>
               </div>
+              ) : infoOpen ? (
+                <div className="space-y-4 text-sm">
+                  <div className="rounded-lg border border-gray-800 bg-gray-800/40 p-3">
+                    <div className="font-medium">Preset Name</div>
+                    <div className="mt-1 text-gray-300">The name of your preset. Use it to save, find, and reapply settings quickly.</div>
+                  </div>
+                  <div className="rounded-lg border border-gray-800 bg-gray-800/40 p-3">
+                    <div className="font-medium">Type</div>
+                    <ul className="mt-1 list-disc space-y-1 pl-5 text-gray-300">
+                      <li><strong>General</strong>: Balanced for everyday tasks.</li>
+                      <li><strong>Coding</strong>: Tailored for code. <em>Include tests</em> asks the model to generate tests with solutions.</li>
+                      <li><strong>Image</strong>: Generates image prompts. Configure <em>Image Style</em> (e.g., Photorealistic, Illustration) and <em>Aspect Ratio</em> (e.g., 1:1, 16:9).</li>
+                      <li><strong>Research</strong>: Oriented for factual outputs. <em>Require citations</em> asks for sources where possible.</li>
+                      <li><strong>Writing</strong>: For articles, stories, emails, etc.</li>
+                      <li><strong>Marketing</strong>: For ads, landing copy, and campaigns.</li>
+                    </ul>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3">
+                    <div className="rounded-lg border border-gray-800 bg-gray-800/40 p-3">
+                      <div className="font-medium">Mode</div>
+                      <ul className="mt-1 list-disc space-y-1 pl-5 text-gray-300">
+                        <li><strong>Build</strong>: Create a prompt from your description.</li>
+                        <li><strong>Enhance</strong>: Improve or refactor an existing prompt.</li>
+                      </ul>
+                    </div>
+                    <div className="rounded-lg border border-gray-800 bg-gray-800/40 p-3">
+                      <div className="font-medium">Tone</div>
+                      <div className="mt-1 text-gray-300">Style of voice: <em>Neutral, Friendly, Formal, Technical, Persuasive</em>.</div>
+                    </div>
+                    <div className="rounded-lg border border-gray-800 bg-gray-800/40 p-3">
+                      <div className="font-medium">Detail</div>
+                      <div className="mt-1 text-gray-300">How comprehensive the output should be: <em>Brief, Normal, Detailed</em>.</div>
+                    </div>
+                    <div className="rounded-lg border border-gray-800 bg-gray-800/40 p-3">
+                      <div className="font-medium">Format</div>
+                      <div className="mt-1 text-gray-300">Preferred output: <em>Plain</em> text, <em>Markdown</em>, or <em>JSON</em>.</div>
+                    </div>
+                    <div className="rounded-lg border border-gray-800 bg-gray-800/40 p-3">
+                      <div className="font-medium">Language</div>
+                      <div className="mt-1 text-gray-300">Choose output language: English, Dutch, Arabic, Mandarin Chinese, Spanish, French, Russian, Urdu.</div>
+                    </div>
+                    <div className="rounded-lg border border-gray-800 bg-gray-800/40 p-3">
+                      <div className="font-medium">Temperature</div>
+                      <div className="mt-1 text-gray-300">Controls randomness (0.1–1.0). Lower = more focused and deterministic; higher = more creative.</div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4 text-sm">
+                  <div className="flex items-center gap-3 rounded-lg border border-gray-800 bg-gray-800/40 p-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-700 text-sm text-white">{(user?.name ?? user?.email ?? "U").slice(0,2).toUpperCase()}</div>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-gray-100">{user?.name ?? user?.email ?? "User"}</div>
+                      {user?.email && <div className="text-xs text-gray-400">{user.email}</div>}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-gray-800 bg-gray-800/40 p-3">
+                    <div className="font-medium">Privacy</div>
+                    <div className="mt-2 text-gray-300">Delete all your chats and presets from this app.</div>
+                    <button
+                      type="button"
+                      className="mt-3 rounded-md border border-red-600 bg-red-600/10 px-3 py-2 text-xs font-semibold text-red-300 transition hover:bg-red-600/20"
+                      onClick={() => {
+                        const box = document.createElement("div");
+                        box.className = "fixed inset-0 z-50 flex items-center justify-center";
+                        box.innerHTML = `
+                          <div class=\"absolute inset-0 bg-black/60\"></div>
+                          <div class=\"relative z-10 w-[92vw] max-w-sm rounded-xl border border-white/10 bg-gray-900 p-4 text-gray-100 shadow-2xl\">\n                            <div class=\"text-base font-semibold mb-2\">Delete all data?</div>\n                            <div class=\"text-sm text-gray-300\">This will delete all chats and presets. This cannot be undone.</div>\n                            <div class=\"mt-4 flex items-center justify-end gap-2\">\n                              <button id=\"pc_cancel\" class=\"rounded-md border border-gray-600 bg-gray-800 px-3 py-1.5 text-sm\">Cancel</button>\n                              <button id=\"pc_confirm\" class=\"rounded-md border border-red-600 bg-red-600/20 px-3 py-1.5 text-sm text-red-200\">Delete</button>\n                            </div>\n                          </div>`;
+                        document.body.appendChild(box);
+                        const remove = () => box.remove();
+                        document.getElementById("pc_cancel")?.addEventListener("click", () => remove(), { once: true });
+                        document.getElementById("pc_confirm")?.addEventListener("click", async () => {
+                          try {
+                            try {
+                              const list = await utils.chat.list.fetch();
+                              for (const c of list ?? []) {
+                                try { await removeChat.mutateAsync({ chatId: c.id }); } catch {}
+                              }
+                            } catch {}
+                            try {
+                              const res = await fetch('/api/presets');
+                              const data = await res.json();
+                              const ps = Array.isArray(data?.presets) ? data.presets : [];
+                              for (const p of ps) {
+                                try { await fetch(`/api/presets?id=${encodeURIComponent(p.id)}`, { method: 'DELETE' }); } catch {}
+                              }
+                            } catch {}
+                          } finally { remove(); }
+                        }, { once: true });
+                      }}
+                    >
+                      Delete all chat history and saved prompt presets
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
