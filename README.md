@@ -85,7 +85,7 @@ LekkerPrompt is a community-driven, open source initiative, and your contributio
 
 <h2 id="contributors">💖 Contributors</h2>
 
-<p>To show my full support and appreciation, <strong>all</strong> contributors will be featured here. Thank you to everyone who takes time to make meaningful contributions.</p>
+<p><strong>All</strong> contributors will be featured here. Thank you to everyone who takes time to make meaningful contributions to LekkerPrompt.</p>
 
 <a href="https://github.com/sammyhamwi/LekkerPrompt/graphs/contributors">
   <p align="left">
@@ -95,6 +95,3 @@ LekkerPrompt is a community-driven, open source initiative, and your contributio
   </p>
 </a>
 
----
-
-> LekkerPrompt is just getting started. Join :wave:[me](https://github.com/sammyhamwi) on this journey to build the ultimate toolkit for LLM prompting and context creation!
