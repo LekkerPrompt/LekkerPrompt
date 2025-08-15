@@ -10,8 +10,6 @@
   <a href="https://github.com/sammyhamwi/LekkerPrompt">Home</a> | <a href="https://github.com/sammyhamwi/LekkerPrompt/issues">Report an Issue</a>
 </div>
 
----
+# LekkerPrompt Guides
 
-## lekker-guides/ DIRECTORY IN PROGRESS
-
----
+Guides in progress!
