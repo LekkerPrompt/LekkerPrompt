@@ -11,7 +11,13 @@ const MessageSchema = z.object({
 
 export const chatRouter = createTRPCRouter({
   list: protectedProcedure.query(async ({ ctx }) => {
-    const chats = await ctx.db.chat.findMany({
+    type ChatSummary = {
+      id: string;
+      title: string | null;
+      updatedAt: Date;
+      _count: { messages: number };
+    };
+    const chats: ChatSummary[] = await ctx.db.chat.findMany({
       where: { userId: ctx.session.user.id },
       orderBy: { updatedAt: "desc" },
       select: { id: true, title: true, updatedAt: true, _count: { select: { messages: true } } },
@@ -53,7 +59,7 @@ export const chatRouter = createTRPCRouter({
         const toDelete = total - cap;
         const oldest = await ctx.db.chatMessage.findMany({ where: { chatId }, orderBy: { createdAt: "asc" }, take: toDelete, select: { id: true } });
         if (oldest.length) {
-          await ctx.db.chatMessage.deleteMany({ where: { id: { in: oldest.map((o) => o.id) } } });
+          await ctx.db.chatMessage.deleteMany({ where: { id: { in: oldest.map((o: { id: string }) => o.id) } } });
         }
       }
 
