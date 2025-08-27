@@ -69,6 +69,10 @@ async function attemptModelCall(combinedPrompt: string, options?: GenerationOpti
 
   const base = env.GOOGLE_BASE_URL || '';
   const key = env.GOOGLE_API_KEY || '';
+  if (!base) {
+    // Avoid making a relative fetch like '?key=' which would return HTML and cause parse errors.
+    return 'Google AI endpoint not configured. Set GOOGLE_BASE_URL (and optionally GOOGLE_API_KEY) or configure a local / proxy model.';
+  }
   const url = `${base}?key=${encodeURIComponent(key)}`;
 
   const payload: any = {

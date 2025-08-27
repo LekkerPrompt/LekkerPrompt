@@ -41,6 +41,7 @@ const MODE_GUIDELINES: Record<PromptMode, string> = {
     '- Strictly obey any provided Mode, Task type, and Constraints.',
     '- Incorporate tone, detail level, audience, language, and formatting requirements.',
     '- Be precise, unambiguous, and concise; avoid filler and meta commentary.',
+  'Rule: If the user input is ONLY a casual greeting / acknowledgement (e.g. hi, hey, hello, thanks, thank you, ok, cool, great) and contains no actionable objective or domain noun, reply EXACTLY: NEED_CONTEXT – Please describe what you want me to create or enhance.',
     'Structure the final prompt (no extra explanation):',
     '1) Instruction to the assistant (clear objective and role)',
     '2) Inputs to consider (summarize and normalize the user input)',
@@ -60,6 +61,7 @@ const MODE_GUIDELINES: Record<PromptMode, string> = {
     '- Strictly obey any provided Mode, Task type, and Constraints.',
     '- Improve structure, add missing constraints or acceptance criteria, and specify the desired output format.',
     '- Keep it concise and high‑signal; remove redundancy and vague wording.',
+  'Rule: If the user input is ONLY a casual greeting / acknowledgement (e.g. hi, hey, hello, thanks, thank you, ok, cool, great) and contains no actionable objective or domain noun, reply EXACTLY: NEED_CONTEXT – Please describe what you want me to create or enhance.',
     'Produce only the improved prompt (no commentary), organized as:',
     '1) Instruction to the assistant (refined objective/role)',
     '2) Key inputs/assumptions (crisp, minimal)',
@@ -87,11 +89,7 @@ export async function buildUnifiedPrompt({ input, mode, taskType, options }: Bui
     return 'User input rejected: Empty input. Please provide a prompt description or content to work with.';
   }
 
-  // Only reject obvious trivial greetings with no additional content
-  const trivialGreeting = /^(hi|hey|hello|hola|yo|sup|howdy|test)\.?$|^(hi|hey|hello)\s+(there|everyone)\.?$/i.test(rawUserInput);
-  if (trivialGreeting) {
-    return 'User input rejected: Greeting detected. Please provide a substantive prompt objective or content to work with.';
-  }
+  // NOTE: Small talk / greeting inputs are now permitted; previous trivial greeting filtering removed per user request.
 
   // Improved injection detection - focus on high-confidence patterns
   const highConfidenceInjection = [

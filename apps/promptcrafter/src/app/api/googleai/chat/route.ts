@@ -43,22 +43,17 @@ export async function POST(req: Request) {
   }
 
   try {
-    const normalized = parsed.input.trim().toLowerCase();
-    const looksLikeSmallTalk = /^(hi|hey|hello|how\s+are\s+you|what's\s+up|sup|yo)[!.\s]*$/i.test(parsed.input.trim())
-      || /^(tell\s+me\s+about\s+yourself|who\s+are\s+you)/i.test(normalized)
-      || (parsed.taskType === "general" && normalized.split(/\s+/).length <= 4 && /^(ok|k|thanks|thank\s+you|nice|cool|great)$/i.test(parsed.input.trim()));
-
-    if (looksLikeSmallTalk) {
-      const info = "I am PromptCrafter. Provide a concrete objective (e.g. 'detailed sci-fi city skyline at dusk in cinematic photorealistic style') or paste a prompt to enhance. Greetings alone aren't actionable.";
-      return NextResponse.json({ output: info });
-    }
+    // No server-side greeting suppression; handled by model via NEED_CONTEXT sentinel rule.
 
     const streamRequested = !!parsed.options?.format && (req.headers.get('x-stream') === '1' || new URL(req.url).searchParams.get('stream') === '1');
     let output: string;
     if (isElectron && !streamRequested) {
       const modelCfg = await readLocalModelConfig();
       const full = await buildUnifiedPrompt({ input: parsed.input, mode: parsed.mode as PromptMode, taskType: parsed.taskType as TaskType, options: parsed.options });
-      if (modelCfg && (modelCfg.provider === 'ollama' || modelCfg.provider === 'openrouter-proxy')) {
+      // If builder returned a rejection / guidance sentinel, surface directly (do NOT send to model)
+      if (/^User input rejected:/i.test(full)) {
+        output = full;
+      } else if (modelCfg && (modelCfg.provider === 'ollama' || modelCfg.provider === 'openrouter-proxy')) {
         output = await callLocalModel(full);
       } else {
         // Fallback to remote API if no local/remote provider configured

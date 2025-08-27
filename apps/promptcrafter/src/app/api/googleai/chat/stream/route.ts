@@ -21,11 +21,20 @@ export async function POST(req: Request) {
   if (!isElectron) return NextResponse.json({ error: 'not-electron', detail: 'Streaming only enabled inside Electron runtime' }, { status: 400 });
 
   const encoder = new TextEncoder();
+  // No greeting guard; model handles NEED_CONTEXT sentinel.
+
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const fullPrompt = await buildUnifiedPrompt({ input: parsed.input, mode: parsed.mode as PromptMode, taskType: parsed.taskType as TaskType, options: parsed.options });
-        const full = await callLocalModel(fullPrompt);
+        const built = await buildUnifiedPrompt({ input: parsed.input, mode: parsed.mode as PromptMode, taskType: parsed.taskType as TaskType, options: parsed.options });
+        // Intercept rejection / guidance sentinel and stream directly instead of invoking model
+        if (/^User input rejected:/i.test(built)) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ delta: built })}\n\n`));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`));
+          controller.close();
+          return;
+        }
+        const full = await callLocalModel(built);
         const chunks = full.match(/.{1,400}/gs) || [full];
         for (const c of chunks) {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ delta: c })}\n\n`));
