@@ -5,10 +5,11 @@ import { isElectronRuntime } from '@/lib/runtime';
 declare global {
   interface Window {
     promptcrafter?: {
-      getConfig: () => Promise<{ dataDir?: string }>;
-      isDbConfigured: () => Promise<{ configured: boolean }>;
-      chooseDataDir: () => Promise<{ ok: boolean; dataDir?: string }>;
-      getDbInfo: () => Promise<{ ok: boolean; dataDir?: string; dbPath?: string; sizeBytes?: number; error?: string }>;
+  getConfig: () => Promise<{ dataDir?: string }>;
+  isDbConfigured: () => Promise<{ configured: boolean; writable?: boolean; dataDir?: string }>;
+  chooseDataDir: () => Promise<{ ok: boolean; dataDir?: string; error?: string }>;
+  getDbInfo: () => Promise<{ ok: boolean; dataDir?: string; dbPath?: string; sizeBytes?: number; error?: string; writable?: boolean }>;
+  getEnvSafety?: () => Promise<{ execPath: string; inDownloads: boolean; zoneIdentifierPresent: boolean; zoneRemoved: boolean }>; 
     };
   }
 }
@@ -26,12 +27,37 @@ export default function DatabaseSetupGate({ children }: Props) {
   const [loadedOnce, setLoadedOnce] = React.useState(false);
   const [selecting, setSelecting] = React.useState(false);
   const [error, setError] = React.useState<string>("");
+  const [envWarning, setEnvWarning] = React.useState<string>("");
+  const [writable, setWritable] = React.useState<boolean | null>(null);
 
   // Client side enhancement: if we didn't know on SSR, detect now
   React.useEffect(() => {
     if (!electronMode && (isElectronRuntime() || process.env.NEXT_PUBLIC_ELECTRON === '1')) {
       setElectronMode(true);
     }
+  }, [electronMode]);
+
+  // Fetch environment safety diagnostics (download location, zone identifier) once
+  React.useEffect(() => {
+    if (!electronMode) return;
+    if (!(window as any).promptcrafter?.getDbInfo) return; // wait for preload readiness
+    (async () => {
+      try {
+        // @ts-ignore
+        if (window.promptcrafter?.getEnvSafety) {
+          // @ts-ignore
+          const envInfo = await window.promptcrafter.getEnvSafety();
+          if (envInfo.inDownloads) {
+            setEnvWarning(prev => prev + 'The app executable is running from your Downloads folder. Move it to Program Files or another permanent location to avoid Windows blocking writes. ');
+          }
+          if (envInfo.zoneIdentifierPresent && !envInfo.zoneRemoved) {
+            setEnvWarning(prev => prev + 'Windows SmartScreen mark detected; write operations may be restricted. Right-click the .exe, open Properties, and check "Unblock" if available. ');
+          } else if (envInfo.zoneIdentifierPresent && envInfo.zoneRemoved) {
+            setEnvWarning(prev => prev + 'Removed Windows SmartScreen quarantine mark for this session. ');
+          }
+        }
+      } catch (_) { /* ignore */ }
+    })();
   }, [electronMode]);
 
   // Check if database is configured on startup
@@ -51,14 +77,16 @@ export default function DatabaseSetupGate({ children }: Props) {
           throw new Error('Electron IPC not available');
         }
         
-        const result = await window.promptcrafter.isDbConfigured();
+  const result = await window.promptcrafter.isDbConfigured();
         if (cancelled) return;
         
         if (result?.configured) {
           setConfigured(true);
+          setWritable(typeof result.writable === 'boolean' ? result.writable : true);
         } else {
           // Database is not configured - show the setup UI
           setConfigured(false);
+          if (typeof result?.writable === 'boolean') setWritable(result.writable);
         }
       } catch (err: any) {
         console.error('Failed to check database configuration:', err);
@@ -98,6 +126,7 @@ export default function DatabaseSetupGate({ children }: Props) {
           
           if (refreshResponse.ok) {
             setConfigured(true);
+            setWritable(true);
           } else {
             const refreshData = await refreshResponse.json();
             setError(`Database setup failed: ${refreshData.error || 'Unknown error'}`);
@@ -106,7 +135,11 @@ export default function DatabaseSetupGate({ children }: Props) {
           setError(`Failed to initialize database: ${refreshError.message || 'Unknown error'}`);
         }
       } else if (!result?.ok) {
-        setError("Directory selection was canceled");
+        if ((result as any)?.error) {
+          setError((result as any).error);
+        } else {
+          setError("Directory selection was canceled");
+        }
       }
     } catch (err: any) {
       console.error('Directory selection error:', err);
@@ -126,6 +159,22 @@ export default function DatabaseSetupGate({ children }: Props) {
 
   // If database is configured, render children
   if (configured) {
+    // If configured but not writable (edge case), force re-selection overlay
+    if (writable === false) {
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950">
+          <div className="w-full max-w-lg rounded-xl border border-red-500/30 bg-gray-900 p-6 text-gray-100 shadow-2xl">
+            <h1 className="mb-3 text-2xl font-semibold text-red-300">Database Folder Not Writable</h1>
+            <p className="text-sm mb-4 text-gray-300">The selected data folder can't be written to. Choose a different location (avoid Downloads, Program Files, or read-only folders).</p>
+            {envWarning && <div className="mb-4 rounded border border-amber-500/40 bg-amber-900/30 p-3 text-xs text-amber-200 whitespace-pre-line">{envWarning}</div>}
+            {error && <div className="mb-4 rounded border border-red-500/40 bg-red-900/30 p-3 text-xs text-red-300">{error}</div>}
+            <div className="flex justify-center">
+              <button onClick={handleChooseDirectory} disabled={selecting} className="rounded-md bg-indigo-600 px-6 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed">{selecting ? 'Selecting Folder…' : 'Choose Different Folder'}</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
     return <>{children}</>;
   }
 
@@ -167,6 +216,11 @@ export default function DatabaseSetupGate({ children }: Props) {
                 <li><strong>Cloud sync folder:</strong> Sync across devices (Dropbox, OneDrive, etc.)</li>
               </ul>
             </div>
+            {envWarning && (
+              <div className="rounded-lg border border-amber-400/30 bg-amber-800/30 p-4 text-xs text-amber-200 whitespace-pre-line">
+                {envWarning}
+              </div>
+            )}
           </div>
 
           {error && (

@@ -45,11 +45,42 @@ if (cfg.dataDir) {
 }
 // If no dataDir is configured, we'll prompt the user before setting DATABASE_URL
 
+// Utility: attempt write/delete test file to confirm directory is writable
+function canWriteToDir(dir) {
+  try {
+    const testFile = path.join(dir, '.promptcrafter-write-test');
+    fs.writeFileSync(testFile, 'ok');
+    fs.unlinkSync(testFile);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Attempt to detect Windows Mark-of-the-Web ADS (Zone.Identifier) and optionally remove
+function checkAndOptionallyClearZoneIdentifier() {
+  const execPath = process.execPath;
+  if (process.platform !== 'win32') return { zoneIdentifierPresent: false, removed: false };
+  const adsPath = execPath + ':Zone.Identifier';
+  try {
+    if (fs.existsSync(adsPath)) {
+      // Try read for diagnostics then remove
+      let removed = false;
+      try { fs.readFileSync(adsPath, 'utf8'); } catch(_) {}
+      try { fs.unlinkSync(adsPath); removed = true; } catch(_) {}
+      return { zoneIdentifierPresent: true, removed };
+    }
+  } catch(_) {}
+  return { zoneIdentifierPresent: false, removed: false };
+}
+
 // Register IPC handlers early - before app.whenReady() to ensure they're available immediately
 ipcMain.handle('promptcrafter:getConfig', () => ({ dataDir: dataDirPath }));
 ipcMain.handle('promptcrafter:isDbConfigured', () => {
   const cfg = loadConfig();
-  return { configured: !!(cfg.dataDir && dataDirPath) };
+  const dir = cfg.dataDir || dataDirPath;
+  const writable = !!dir && canWriteToDir(dir);
+  return { configured: !!(dir && writable), writable, dataDir: dir };
 });
 ipcMain.handle('promptcrafter:getDbInfo', () => {
   try {
@@ -60,7 +91,7 @@ ipcMain.handle('promptcrafter:getDbInfo', () => {
       const stat = fs.statSync(dbPath);
       sizeBytes = stat.size;
     }
-    return { ok: true, dataDir: dataDirPath, dbPath, sizeBytes };
+    return { ok: true, dataDir: dataDirPath, dbPath, sizeBytes, writable: canWriteToDir(dataDirPath) };
   } catch (e) {
     return { ok: false, error: e?.message || 'Failed to read DB info' };
   }
@@ -70,12 +101,21 @@ ipcMain.handle('promptcrafter:chooseDataDir', async () => {
   if (result.canceled || !result.filePaths?.[0]) return { ok: false };
   const selected = result.filePaths[0];
   try { fs.mkdirSync(selected, { recursive: true }); } catch (e) {}
+  if (!canWriteToDir(selected)) {
+    return { ok: false, error: 'Selected folder is not writable. Choose another location (avoid Downloads or protected folders).' };
+  }
   const cfg2 = loadConfig();
   cfg2.dataDir = selected;
   saveConfig(cfg2);
   dataDirPath = selected;
   process.env.DATABASE_URL = `file:${path.join(dataDirPath, 'electron.db')}`;
   return { ok: true, dataDir: dataDirPath };
+});
+ipcMain.handle('promptcrafter:getEnvSafety', () => {
+  const execPath = process.execPath;
+  const inDownloads = /[\\/](Downloads|downloads)[\\/]/.test(execPath);
+  const zone = checkAndOptionallyClearZoneIdentifier();
+  return { execPath, inDownloads, zoneIdentifierPresent: zone.zoneIdentifierPresent, zoneRemoved: zone.removed };
 });
 
 function createWindow() {
