@@ -1,8 +1,9 @@
 {
 	"name": "promptcrafter",
 	"version": "1.0.0",
+	"author": "Sammy Hamwi <info@sammyhamwi.ai>",
+	"homepage": "https://github.com/LekkerPrompt/LekkerPrompt/tree/master/apps/promptcrafter",
 	"description": "PromptCrafter",
-	"author": "LekkerPrompt",
 	"private": true,
 	"type": "module",
 	"scripts": {
@@ -105,9 +106,14 @@
 		},
 		"linux": {
 			"target": [
-				"AppImage"
+				"AppImage",
+				"deb"
 			],
-			"category": "Utility"
+			"category": "Utility",
+			"maintainer": "Sammy Hamwi <info@sammyhamwi.ai>",
+			"synopsis": "PromptCrafter AI prompt engineering tool",
+			"description": "PromptCrafter: build and enhance AI prompts locally with an embedded SQLite database.",
+			"artifactName": "${productName}-${version}-${arch}.${ext}"
 		}
 	},
 	"ct3aMetadata": {
