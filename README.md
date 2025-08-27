@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://sammyhamwi.ai/images/LekkerPrompt-logo-lrg.png" alt="LekkerPrompt Logo" width="320" height="320" />
+  <img src="https://raw.githubusercontent.com/LekkerPrompt/LekkerPrompt/refs/heads/master/logo.png" alt="LekkerPrompt Logo" width="320" height="320" />
 </p>
 
 <p align="center">
@@ -150,6 +150,7 @@ MIT License. Created for the LekkerPrompt project.
 ---
 
 If this project helps you, a star ⭐ is appreciated.
+
 
 
 
