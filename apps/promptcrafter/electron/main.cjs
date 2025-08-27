@@ -109,6 +109,50 @@ ipcMain.handle('promptcrafter:getDbInfo', () => {
     return { ok: false, error: e?.message || 'Failed to read DB info' };
   }
 });
+// Reset DB configuration: allow user to pick a new directory and optionally rebuild DB file
+ipcMain.handle('promptcrafter:resetDataDir', async () => {
+  try {
+    const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'], title: 'Select new database directory' });
+    if (result.canceled || !result.filePaths?.[0]) return { ok: false, cancelled: true };
+    const selected = result.filePaths[0];
+    try { fs.mkdirSync(selected, { recursive: true }); } catch (_) {}
+    if (!canWriteToDir(selected)) {
+      return { ok: false, error: 'Selected folder is not writable. Choose another location (avoid protected folders).' };
+    }
+    // Persist new config
+    const cfg2 = loadConfig();
+    cfg2.dataDir = selected;
+    saveConfig(cfg2);
+    dataDirPath = selected;
+    const dbFile = path.join(dataDirPath, 'electron.db');
+    // If an existing DB file exists at old location, we leave it in place (user can migrate manually)
+    // If a DB file exists at new location and user wants a clean reset, rename it with timestamp
+    if (fs.existsSync(dbFile)) {
+      try {
+        const backup = dbFile.replace(/\.db$/i, '.backup-' + Date.now() + '.db');
+        fs.renameSync(dbFile, backup);
+      } catch (e) { /* ignore rename issues */ }
+    }
+    // Point process env at new DB path BEFORE any new prisma initialization
+    process.env.DATABASE_URL = `file:${dbFile}`;
+    // Lazily created schema (ensureSqliteSchema) will run on next API call; we just touch file to confirm writability
+    try { fs.writeFileSync(dbFile, ''); } catch (_) {}
+    return { ok: true, dataDir: dataDirPath, dbPath: dbFile, note: 'Restart may be required for running Prisma client to use new path.' };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'Reset failed' };
+  }
+});
+
+// Restart the Electron application (used after DB reset)
+ipcMain.handle('promptcrafter:restartApp', () => {
+  try {
+    app.relaunch();
+    app.exit(0);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'Failed to restart' };
+  }
+});
 ipcMain.handle('promptcrafter:chooseDataDir', async () => {
   const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
   if (result.canceled || !result.filePaths?.[0]) return { ok: false };

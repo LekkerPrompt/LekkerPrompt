@@ -10,6 +10,8 @@ declare global {
   chooseDataDir: () => Promise<{ ok: boolean; dataDir?: string; error?: string }>;
   getDbInfo: () => Promise<{ ok: boolean; dataDir?: string; dbPath?: string; sizeBytes?: number; error?: string; writable?: boolean }>;
   getEnvSafety?: () => Promise<{ execPath: string; inDownloads: boolean; zoneIdentifierPresent: boolean; zoneRemoved: boolean }>; 
+  resetDataDir?: () => Promise<{ ok: boolean; dataDir?: string; dbPath?: string; error?: string; note?: string; cancelled?: boolean }>;
+  restartApp?: () => Promise<{ ok: boolean; error?: string }>;
     };
   }
 }

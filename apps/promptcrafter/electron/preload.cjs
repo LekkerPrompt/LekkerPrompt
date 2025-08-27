@@ -5,5 +5,8 @@ contextBridge.exposeInMainWorld('promptcrafter', {
 	getConfig: () => ipcRenderer.invoke('promptcrafter:getConfig'),
 	isDbConfigured: () => ipcRenderer.invoke('promptcrafter:isDbConfigured'),
 	chooseDataDir: () => ipcRenderer.invoke('promptcrafter:chooseDataDir'),
-	getDbInfo: () => ipcRenderer.invoke('promptcrafter:getDbInfo')
+	getDbInfo: () => ipcRenderer.invoke('promptcrafter:getDbInfo'),
+	resetDataDir: () => ipcRenderer.invoke('promptcrafter:resetDataDir')
+,
+	restartApp: () => ipcRenderer.invoke('promptcrafter:restartApp')
 });

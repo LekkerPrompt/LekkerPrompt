@@ -4,10 +4,13 @@ import React from "react";
 declare global {
   interface Window {
     promptcrafter?: {
-      getConfig: () => Promise<{ dataDir?: string }>;
-      isDbConfigured: () => Promise<{ configured: boolean }>;
-      chooseDataDir: () => Promise<{ ok: boolean; dataDir?: string }>;
-  getDbInfo: () => Promise<{ ok: boolean; dataDir?: string; dbPath?: string; sizeBytes?: number; error?: string }>;
+  getConfig: () => Promise<{ dataDir?: string }>;
+  isDbConfigured: () => Promise<{ configured: boolean; writable?: boolean; dataDir?: string }>;
+  chooseDataDir: () => Promise<{ ok: boolean; dataDir?: string; error?: string }>;
+	getDbInfo: () => Promise<{ ok: boolean; dataDir?: string; dbPath?: string; sizeBytes?: number; error?: string; writable?: boolean }>;
+  resetDataDir?: () => Promise<{ ok: boolean; dataDir?: string; dbPath?: string; error?: string; note?: string; cancelled?: boolean }>;
+	getEnvSafety?: () => Promise<{ execPath: string; inDownloads: boolean; zoneIdentifierPresent: boolean; zoneRemoved: boolean }>;
+  restartApp?: () => Promise<{ ok: boolean; error?: string }>;
     };
   }
 }
