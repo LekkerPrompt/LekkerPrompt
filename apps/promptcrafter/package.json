@@ -75,7 +75,8 @@
 		"asarUnpack": [
 			"**/*.node",
 			"src/server/generated/electron/**",
-			".next/**"
+			".next/**",
+			"node_modules/next/**"
 		],
 		"directories": {
 			"buildResources": "build"
@@ -85,7 +86,7 @@
 		},
 		"mac": {
 			"category": "public.app-category.productivity",
-			"icon": "public/branding/icon.icns"
+			"icon": "build/icon.icns"
 		},
 		"win": {
 			"target": [

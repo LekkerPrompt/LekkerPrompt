@@ -44,6 +44,19 @@ if (cfg.dataDir) {
   process.env.DATABASE_URL = `file:${path.join(dataDirPath, 'electron.db')}`;
 }
 // If no dataDir is configured, we'll prompt the user before setting DATABASE_URL
+// In packaged production builds, failing to set a DB path early can cause server init errors
+// if any imported module touches the DB immediately. Provide a safe fallback.
+if (!isDev && !dataDirPath) {
+  try {
+    const fallback = path.join(app.getPath('userData'), 'data');
+    fs.mkdirSync(fallback, { recursive: true });
+    dataDirPath = fallback;
+    process.env.DATABASE_URL = `file:${path.join(dataDirPath, 'electron.db')}`;
+    console.log('[Electron] No persisted dataDir. Using fallback at', fallback);
+  } catch (e) {
+    console.warn('[Electron] Failed to create fallback data directory', e);
+  }
+}
 
 // Utility: attempt write/delete test file to confirm directory is writable
 function canWriteToDir(dir) {
@@ -356,7 +369,7 @@ app.whenReady().then(async () => {
     process.env.ELECTRON = '1';
   process.env.NODE_ENV = 'production';
     try {
-      console.log('[Electron] Starting embedded Next.js server (packaged). __dirname=', __dirname);
+  console.log('[Electron] Starting embedded Next.js server (packaged). __dirname=', __dirname, 'node', process.version, 'platform', process.platform, 'electron', process.versions.electron);
       let appDir = path.join(__dirname, '..');
       // If inside asar, adjust (Electron unpacks app.asar automatically for fs reads)
       if (appDir.includes('app.asar')) {
@@ -375,9 +388,14 @@ app.whenReady().then(async () => {
       try {
         nextFactory = require('next');
       } catch (eReq) {
-        console.error('[Electron] Failed to require("next") direct, attempting dist path', eReq);
-        const alt = require('next/dist/server/next');
-        nextFactory = typeof alt === 'function' ? alt : (typeof alt.default === 'function' ? alt.default : alt.next || alt.default?.next);
+        console.error('[Electron] Failed to require("next") direct, attempting dist path', eReq?.stack || eReq);
+        try {
+          const alt = require('next/dist/server/next');
+          nextFactory = typeof alt === 'function' ? alt : (typeof alt.default === 'function' ? alt.default : alt.next || alt.default?.next);
+        } catch (eAlt) {
+          console.error('[Electron] Secondary require attempt failed', eAlt?.stack || eAlt);
+          throw eReq;
+        }
       }
       if (typeof nextFactory !== 'function') {
         throw new Error('Resolved Next factory is not a function: type=' + typeof nextFactory);
@@ -393,7 +411,7 @@ app.whenReady().then(async () => {
       if (addr && typeof addr === 'object') nextServerPort = addr.port;
       createWindow();
     } catch (e) {
-      console.error('Failed to start embedded Next.js server', e);
+  console.error('Failed to start embedded Next.js server', e?.stack || e);
       let wrote = false;
       try {
         const errPath = path.join(app.getPath('userData'), 'startup-error.log');

@@ -16,7 +16,7 @@ try {
     ELECTRON: '1',
     NEXT_PUBLIC_ELECTRON: '1',
     BUILDING_ELECTRON: '1', // custom flag to let runtime skip side-effectful DB init during build
-    NEXT_DISABLE_FILE_TRACE: '1',
+  // Leave file tracing enabled (removing NEXT_DISABLE_FILE_TRACE) so Next can resolve runtime deps in packaged app
     TMPDIR: tempBuildDir,
     TEMP: tempBuildDir,
     TMP: tempBuildDir,
@@ -35,8 +35,10 @@ try {
   console.log('Building Prisma for Electron...');
   execSync('npm run build:electron:prisma', { stdio: 'inherit', env });
 
-  console.log('Building Next.js app...');
+  console.log('Building Next.js app (electron build phase)...');
   execSync('next build', { stdio: 'inherit', env, cwd: process.cwd() });
+  console.log('Next.js build finished. Listing .next root contents for diagnostics:');
+  try { execSync('ls -1 .next | head -n 40', { stdio: 'inherit' }); } catch {}
 
   console.log('Build completed successfully!');
 } catch (error) {
