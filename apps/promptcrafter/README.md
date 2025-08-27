@@ -1,193 +1,171 @@
 <p align="center">
-  <img src="https://sammyhamwi.ai/images/LekkerPrompt-logo-lrg.png" alt="LekkerPrompt Logo" width="400" height="400">
+  <img src="https://promptcrafter.org/images/prompt-crafter-logo.png" alt="LekkerPrompt Logo" width="300" height="300" />
 </p>
 
 <p align="center">
-  Master LLM / AI interaction with LekkerPrompt <br> An open source library of toolkits and resources for advanced prompt and context engineering.
+  <strong>PromptCrafter</strong> – local‑first desktop & web app for structured prompt building.
 </p>
 
 <div align="center">
-  <a href="https://github.com/LekkerPrompt/LekkerPrompt">Home</a> | <a href="https://github.com/LekkerPrompt/LekkerPrompt/issues">Report an Issue</a>
+  <a href="https://github.com/LekkerPrompt/LekkerPrompt">Repo Home</a> · <a href="https://github.com/LekkerPrompt/LekkerPrompt/issues">Issues</a>
 </div>
 
-# LekkerPrompt: PromptCrafter AI Chat App
+---
 
-PromptCrafter AI Chat is a focused web app for crafting, refining, and validating AI prompts. It provides two modes — Build and Enhance — plus task-specific options (coding, image, research, writing, marketing). Users can save reusable presets, manage chat history, and configure system prompts per mode.
+# PromptCrafter (Electron + Next.js)
 
-Built using the 🔗[T3-App Stack](https://github.com/t3-oss/create-t3-app) with Next.js App Router, NextAuth (email/Discord), Prisma (MySQL), tRPC, Tailwind CSS, and a Gemini-compatible backend.
+PromptCrafter lets you <em>build</em> new prompts or <em>enhance</em> existing text using task‑specific and style controls. It stores your chats, presets, and system prompts locally (SQLite) inside a directory you choose on first run of the packaged Electron app.
 
-## Features
+The same codebase runs in two modes:
 
-- **Modes**: Build a full prompt or Enhance an existing one
-- **Task types**: general, coding, image, research, writing, marketing
-- **Options**: tone, detail, output format, language, temperature, and type-specific options
-- **Presets**: create, update, delete, set default; quickly apply to new chats
-- **Chats**: saved per user; reopen, delete, or export from UI
-- **Auth**: NextAuth (Discord and/or email magic link)
-- **Admin**: per-mode system prompts via an admin API
+1. Dev Web (Next.js dev server)
+2. Packaged Desktop (Electron + embedded Next.js server)
+
+---
+
+## Feature Summary
+
+- Modes: build / enhance
+- Task types: general, coding, image, research, writing, marketing
+- Options: tone, detail level, output format, language, temperature
+- Presets: create, edit, delete, set default
+- Chat history: persisted; reopen & continue
+- System prompts: per-mode overrides, stored in DB (fallback chain: DB > per-mode env > global env > internal fallback)
+- Local model config (Ollama) or remote proxy (OpenRouter / Google AI endpoint)
+- Privacy consent gate for remote model usage
+- Electron niceties: spellcheck (en-US), custom context menu w/ suggestions, controlled window sizing
+
+---
 
 ## Stack
 
-- 🔗[Next.js](https://nextjs.org)
-- 🔗[NextAuth.js](https://next-auth.js.org)
-- 🔗[Prisma](https://prisma.io)
-- 🔗[Tailwind CSS](https://tailwindcss.com)
-- 🔗[tRPC](https://trpc.io)
+- Next.js
+- Electron
+- TypeScript
+- Prisma (Local SQLite db)
+- tRPC + React Query
+- Tailwind CSS
+- Biome
 
-## Getting Started
+---
 
-### 1) Prerequisites
+## Development Quick Start
 
-- Node 24
-- MySQL DB
-- Google Gemini API key and base endpoint
-
-### 2) Environment variables
-
-Create a `.env` with the following (required unless marked optional):
-
-```env
-# NextAuth
-AUTH_SECRET=your-random-string            # required in production
-AUTH_DISCORD_ID=                           # required if using Discord
-AUTH_DISCORD_SECRET=                       # required if using Discord
-NEXTAUTH_URL=http://localhost:3000         # optional (set in production)
-AUTH_TRUST_HOST=true                       # optional (useful in Docker)
-
-# Database
-DATABASE_URL=mysql://user:pass@host:3306/dbname
-
-# Gemini
-GOOGLE_GEMINI_API_KEY=your-key
-# Example model endpoint for gemini-2.5-pro:
-GOOGLE_GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent
-
-# Optional per-mode system prompts (fallback chain: DB → per-mode → global → empty)
-GOOGLE_GEMINI_SYSTEM_PROMPT=
-GOOGLE_GEMINI_SYSTEM_PROMPT_BUILD=
-GOOGLE_GEMINI_SYSTEM_PROMPT_ENHANCE=
-
-# Admins (comma-separated email list). Grants access to system prompt admin API.
-ADMIN_EMAILS="user1@example.com,user2@example.com,user3@example.com"
-
-# Client / base path
-NEXT_PUBLIC_BASE_PATH=                     # optional, used by client fetch URLs
-# If deploying under a subpath, also set Next.js basePath at build/runtime:
-NEXT_BASE_PATH=                            # optional, used by next.config.js
-
-# Email (optional, for magic-link sign-in)
-EMAIL_FROM=
-EMAIL_SERVER=
-EMAIL_SERVER_HOST=
-EMAIL_SERVER_PORT=
-EMAIL_SERVER_USER=
-EMAIL_SERVER_PASSWORD=
-EMAIL_SERVER_SECURE=
-```
-
-Notes:
-
-- If you don’t configure Discord or Email, only the methods you configure will appear on the sign-in page.
-- `AUTH_SECRET` must be set in production.
-- `NEXT_BASE_PATH` (server) and `NEXT_PUBLIC_BASE_PATH` (client) are both optional, but should match if you serve the app under a subpath.
-
-### 3) Run with Docker (development)
-
-This repository includes a `Dockerfile` and `docker-compose.yml` for local development.
+Prerequisites: Node >= 18.18 (recommended 20+). No database service required (SQLite file is generated automatically).
 
 ```bash
-# Start MySQL + web (Next.js dev) using the dev stage in Dockerfile
-docker compose up --build
-
-# Tail logs (optional)
-docker compose logs -f web
+npm install
+npm run dev
 ```
 
-- App: `http://localhost:3000`
-- DB: MySQL 8 on `localhost:${MYSQL_PORT:-3306}` (inside Compose, the app uses `db:3306`)
+This runs a script that prepares the SQLite schema then launches Electron, which spawns the Next.js dev server. Choose a data directory when prompted; your `electron.db` will live there.
 
-Notes:
+---
 
-- The `web` service builds with target `dev` and runs `npm run dev` inside the container.
-- Prisma migrations are applied automatically on startup (`migrate deploy` or fallback to `db push`).
-- You can customize MySQL via env (see `docker-compose.yml`: `MYSQL_*` variables). The app’s `DATABASE_URL` is wired to the Compose DB by default.
+## Environment Variables
 
-## How it works
+All server env vars are optional for local experimentation. Provide them to enable remote model calls or baked-in system prompts.
 
-- UI: `src/app/chat/_components/ChatClient.tsx` and `FiltersSidebar.tsx`
-- Auth: `src/server/auth/*`, route at `src/app/api/auth/[...nextauth]/route.ts`
-- Presets: stored in `PromptPreset` (Prisma). REST endpoints under `/api/presets`.
-- Chats: stored in `Chat` and `ChatMessage` (Prisma). Managed via tRPC.
-- Gemini: server call is in `src/server/gemini.ts`; HTTP endpoint at `/api/gemini/chat`.
-- System prompts: DB-backed via `src/server/settings.ts` with admin API.
+| Name | Description |
+|------|-------------|
+| DATABASE_URL | Normally set automatically by Electron after directory selection. |
+| GOOGLE_API_KEY | API key for calling Google AI endpoints directly. |
+| GOOGLE_BASE_URL | Full model endpoint URL (e.g. https://.../models/gemma-2-...:generateContent). |
+| GOOGLE_PROXY_URL | Optional proxy endpoint if you don't want to bundle your key. |
+| GOOGLE_PROXY_AUTH_TOKEN | Shared secret header for proxy authentication. |
+| GOOGLE_SYSTEM_PROMPT | Global default system prompt. |
+| GOOGLE_SYSTEM_PROMPT_BUILD | Build-mode specific system prompt. |
+| GOOGLE_SYSTEM_PROMPT_ENHANCE | Enhance-mode specific system prompt. |
+| NEXT_PUBLIC_BASE_PATH | Optional client base path when hosting under a subpath (web build). |
 
-## API Overview
+Set `SKIP_ENV_VALIDATION=1` when experimenting; the dev/Electron scripts already do this.
 
-### Auth
+---
 
-- `GET /api/auth/signout`: immediately signs the user out and redirects (no confirmation). Optional `?callbackUrl=/path`.
-- `GET|POST /api/auth/[...nextauth]`: handled by NextAuth.
+## Local & Remote Model Configuration
 
-### Prompt generation
+Stored in `AppSetting` rows (`MODEL_PROVIDER`, `MODEL_BASE_URL`, `MODEL_NAME`). Two supported providers:
 
-- `POST /api/gemini/chat`
-  - Body:
+1. `ollama`
+   - `MODEL_BASE_URL`: e.g. `http://localhost:11434`
+   - `MODEL_NAME`: e.g. `gemma:4b`
+2. `openrouter-proxy`
+   - `MODEL_BASE_URL`: proxy endpoint you control
+   - `MODEL_NAME`: auth token (passed as header `x-proxy-auth`)
 
-    ```json
-    {
-      "input": "string",
-      "mode": "build" | "enhance",
-      "taskType": "general" | "coding" | "image" | "research" | "writing" | "marketing",
-      "options": {
-        "tone": "neutral" | "friendly" | "formal" | "technical" | "persuasive",
-        "detail": "brief" | "normal" | "detailed",
-        "format": "plain" | "markdown" | "json",
-        "language": "string",
-        "temperature": 0.0
-      }
-    }
-    ```
+Remote provider usage (openrouter-proxy) requires explicit privacy consent, stored under `REMOTE_PRIVACY_CONSENT_ACCEPTED`.
 
-  - Response: `{ "output": string }` or `{ "error": string }`
+`local-model.ts` contains helpers for reading/writing config and validating connectivity.
 
-### Presets
+---
 
-- `GET /api/presets`: list presets for the authenticated user
-- `POST /api/presets`: create or update (upsert)
-  - Accepts `{ id?, name, mode, taskType, options }`
-- `DELETE /api/presets?id=...` or `DELETE /api/presets?name=...`: delete by id or name
-- `GET /api/presets/default`: get default preset id
-- `POST /api/presets/default`: set default `{ presetId }`
-- `DELETE /api/presets/default`: clear default
+## Build & Distribution
 
-### Admin (system prompts)
-
-Restricted to emails in `ADMIN_EMAILS`.
-
-- `GET /api/admin/system-prompt`: `{ build, enhance }`
-- `PUT /api/admin/system-prompt`: update either or both
-  - Body: `{ "build"?: string, "enhance"?: string }`
-
-## Database
-
-Prisma models live in `prisma/schema.prisma`. Primary entities:
-
-- `User`, `Account`, `Session` (NextAuth)
-- `PromptPreset` (per-user settings)
-- `Chat`, `ChatMessage` (conversation history)
-- `AppSetting` (key-value config, including per-mode system prompts)
-
-Common commands:
+Production desktop bundles:
 
 ```bash
-# Dev schema sync
-npm run db:push
-
-# Production migrations
-npm run db:generate   # create new migration from schema changes (dev)
-npm run db:migrate    # apply migrations (deploy)
+npm run dist:win       # Windows installer + portable
+npm run dist:electron  # All targets (requires platform tooling)
 ```
 
-## Credits
+Internally these run `build:electron` then `electron-builder` (with asar packaging; `.next` assets are unpacked where necessary). The main process starts an embedded Next.js server in production to support dynamic routes.
 
-Created by 🔗[Sammy](https://sammyhamwi.ai) for open source use in [LekkerPrompt](https://github.com/LekkerPrompt/LekkerPrompt) toolkit library.
+---
+
+## Project Scripts (selected)
+
+| Script | Purpose |
+|--------|---------|
+| dev | Prepare SQLite + launch Electron (Next.js dev) |
+| build:electron | Build Next.js for production (no trace) |
+| dist:win / dist:electron | Package desktop app(s) |
+| db:push:electron | Push SQLite schema for Electron client |
+| check / check:write | Biome lint/format |
+| typecheck | TypeScript type checking |
+
+---
+
+## Data & Schema
+
+SQLite schema file: `prisma/schema.sqlite.prisma`.
+Generated client output: `src/server/generated/electron`.
+
+Models: `User`, `Account`, `Session`, `VerificationToken`, `Post`, `PromptPreset`, `Chat`, `ChatMessage`, `AppSetting`.
+
+The `Account/Session` tables are present for structural similarity (auth flows may be trimmed in pure local mode).
+
+---
+
+## Code Pointers
+
+- Electron main: `electron/main.cjs`
+- Preload: `electron/preload.cjs`
+- Startup script: `electron/start-electron.cjs`
+- Env schema: `src/env.js`
+- Model logic (Gemma / Google): `src/server/gemma.ts` & context helpers
+- Local/remote model bridge: `src/server/local-model.ts`
+- System prompts & settings: `src/server/settings.ts`
+- DB bootstrap: `src/server/db.ts`
+
+---
+
+## Contributing
+
+PRs & issues welcome. Useful areas:
+
+- Additional providers (LM Studio, vLLM, etc.)
+- Advanced prompt diffing / comparison UI
+- Accessibility (keyboard navigation, screen reader labels)
+- Localization (multi-language UI)
+
+Open an Issue for large proposals before implementation.
+
+---
+
+## License
+
+MIT © [LekkerPrompt](https://github.com/LekkerPrompt/LekkerPrompt)
+
+---
+
+If this project helps you, a star ⭐ is appreciated.
