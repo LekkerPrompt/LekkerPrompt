@@ -84,7 +84,8 @@
 			"main": "electron/main.cjs"
 		},
 		"mac": {
-			"category": "public.app-category.productivity"
+			"category": "public.app-category.productivity",
+			"icon": "public/branding/icon.icns"
 		},
 		"win": {
 			"target": [
