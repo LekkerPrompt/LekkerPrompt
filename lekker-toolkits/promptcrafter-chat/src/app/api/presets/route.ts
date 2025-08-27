@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/server/auth";
-import { db } from "@/server/db";
+import { ensureDbReady } from "@/server/db";
 
 const OptionsSchema = z.object({
   tone: z.enum(["neutral", "friendly", "formal", "technical", "persuasive"]).optional(),
@@ -29,9 +29,12 @@ const BodySchema = z.object({
 
 export async function GET() {
   const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const presets = await (db as any).promptPreset.findMany({
-    where: { userId: session.user.id },
+  const isElectron = !!(process as any)?.versions?.electron;
+  if (!session?.user && !isElectron) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const userId = session?.user?.id ?? 'local-user';
+  const db = await ensureDbReady();
+  const presets = await db.promptPreset.findMany({
+    where: { userId },
     orderBy: { updatedAt: "desc" },
     select: { id: true, name: true, mode: true, taskType: true, options: true, updatedAt: true },
   });
@@ -40,7 +43,9 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const isElectron = !!(process as any)?.versions?.electron;
+  if (!session?.user && !isElectron) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const userId = session?.user?.id ?? 'local-user';
   let parsed: z.infer<typeof BodySchema>;
   try {
     parsed = BodySchema.parse(await req.json());
@@ -52,8 +57,9 @@ export async function POST(req: Request) {
   let preset;
   if (parsed.id) {
     // Ensure ownership and update
-    preset = await (db as any).promptPreset.update({
-      where: { id: parsed.id, userId: session.user.id } as any,
+  const db = await ensureDbReady();
+  preset = await db.promptPreset.update({
+      where: { id: parsed.id, userId } as any,
       data: {
         name: parsed.name,
         mode: parsed.mode,
@@ -64,10 +70,11 @@ export async function POST(req: Request) {
     });
   } else {
     // Create or update by unique (userId, name)
-    preset = await (db as any).promptPreset.upsert({
-      where: { userId_name: { userId: session.user.id, name: parsed.name } },
+  const db = await ensureDbReady();
+  preset = await db.promptPreset.upsert({
+      where: { userId_name: { userId, name: parsed.name } },
       create: {
-        userId: session.user.id,
+        userId,
         name: parsed.name,
         mode: parsed.mode,
         taskType: parsed.taskType,
@@ -87,12 +94,15 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const isElectron = !!(process as any)?.versions?.electron;
+  if (!session?.user && !isElectron) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const userId = session?.user?.id ?? 'local-user';
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
   const name = url.searchParams.get("name");
   if (!id && !name) return NextResponse.json({ error: "id or name is required" }, { status: 400 });
-  await (db as any).promptPreset.deleteMany({ where: { userId: session.user.id, OR: [{ id: id ?? undefined }, { name: name ?? undefined }] } });
+  const db = await ensureDbReady();
+  await db.promptPreset.deleteMany({ where: { userId, OR: [{ id: id ?? undefined }, { name: name ?? undefined }] } });
   return NextResponse.json({ ok: true });
 }
 

@@ -1,11 +1,17 @@
 {
-	"name": "promptcrafter-chat",
-	"version": "0.1.0",
+	"name": "promptcrafter",
+	"version": "1.0.0",
+	"description": "PromptCrafter",
+	"author": "LekkerPrompt",
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"build": "next build",
-		"build:standalone": "SKIP_ENV_VALIDATION=true next build",
+		"build": "npm run build:electron",
+		"build:electron:prisma": "cross-env DATABASE_URL=\"file:./electron.db\" prisma generate --schema=./prisma/schema.sqlite.prisma && cross-env DATABASE_URL=\"file:./electron.db\" prisma db push --schema=./prisma/schema.sqlite.prisma",
+		"db:push:electron": "cross-env DATABASE_URL=\"file:./electron.db\" prisma db push --schema=./prisma/schema.sqlite.prisma",
+		"build:electron": "node build-electron.cjs",
+		"dist:electron": "npm run build:electron && cross-env NEXT_PUBLIC_ELECTRON=1 electron-builder --win --mac --linux",
+		"dist:win": "npm run build:electron && cross-env NEXT_PUBLIC_ELECTRON=1 electron-builder --win",
 		"check": "biome check .",
 		"check:unsafe": "biome check --write --unsafe .",
 		"check:write": "biome check --write .",
@@ -14,24 +20,27 @@
 		"db:push": "prisma db push",
 		"db:studio": "prisma studio",
 		"prisma:generate": "prisma generate",
-		"dev": "next dev --turbo",
+		"dev": "npm run build:electron:prisma && cross-env SKIP_ENV_VALIDATION=true ELECTRON=1 NEXT_PUBLIC_ELECTRON=1 node ./electron/start-electron.cjs",
 		"postinstall": "node -e \"console.log('Skipping prisma generate during install; handled at runtime by app.js')\"",
-		"preview": "next build && next start",
-		"start": "next start",
-		"start:standalone": "node app.js",
-		"typecheck": "tsc --noEmit"
+		"start": "cross-env SKIP_ENV_VALIDATION=true ELECTRON=1 NEXT_PUBLIC_ELECTRON=1 node ./electron/start-electron.cjs --prod",
+		"typecheck": "tsc --noEmit",
+		"test": "node tests/run-tests.mjs"
 	},
 	"dependencies": {
-		"@auth/prisma-adapter": "^2.7.2",
+		"@fortawesome/fontawesome-svg-core": "^6.5.2",
+		"@fortawesome/free-solid-svg-icons": "^6.5.2",
+		"@fortawesome/react-fontawesome": "^0.2.0",
 		"@prisma/client": "^6.14.0",
 		"@t3-oss/env-nextjs": "0.12.0",
 		"@tanstack/react-query": "^5.69.0",
 		"@trpc/client": "^11.0.0",
 		"@trpc/react-query": "^11.0.0",
 		"@trpc/server": "^11.0.0",
+		"cors": "^2.8.5",
+		"express": "^4.19.2",
+		"express-rate-limit": "^7.3.0",
+		"helmet": "^7.1.0",
 		"next": "^15.2.3",
-		"next-auth": "5.0.0-beta.25",
-		"nodemailer": "^6.10.1",
 		"react": "^19.0.0",
 		"react-dom": "^19.0.0",
 		"server-only": "^0.0.1",
@@ -42,12 +51,62 @@
 		"@biomejs/biome": "1.9.4",
 		"@tailwindcss/postcss": "^4.0.15",
 		"@types/node": "^20.19.10",
+		"@types/express": "^4.17.21",
+		"@types/cors": "^2.8.17",
+		"@types/helmet": "^4.0.0",
 		"@types/react": "^19.1.11",
 		"@types/react-dom": "^19.0.0",
+		"cross-env": "^7.0.3",
+		"electron": "^31.7.7",
+		"electron-builder": "^24.13.3",
 		"postcss": "^8.5.3",
 		"prisma": "^6.14.0",
 		"tailwindcss": "^4.0.15",
 		"typescript": "^5.8.2"
+	},
+	"build": {
+		"appId": "com.promptcrafter.app",
+		"productName": "PromptCrafter",
+		"files": [
+			"**/*",
+			"!node_modules/.cache/**/*",
+			"!**/*.map"
+		],
+		"asarUnpack": [
+			"**/*.node",
+			"src/server/generated/electron/**",
+			".next/**"
+		],
+		"directories": {
+			"buildResources": "build"
+		},
+		"extraMetadata": {
+			"main": "electron/main.cjs"
+		},
+		"mac": {
+			"category": "public.app-category.productivity"
+		},
+		"win": {
+			"target": [
+				"nsis",
+				"portable"
+			],
+			"icon": "public/branding/favicon.ico",
+			"publisherName": "LekkerPrompt",
+			"signAndEditExecutable": true
+		},
+		"nsis": {
+			"oneClick": false,
+			"allowToChangeInstallationDirectory": true,
+			"createDesktopShortcut": true,
+			"createStartMenuShortcut": true
+		},
+		"linux": {
+			"target": [
+				"AppImage"
+			],
+			"category": "Utility"
+		}
 	},
 	"ct3aMetadata": {
 		"initVersion": "7.39.3"

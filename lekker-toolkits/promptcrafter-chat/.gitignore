@@ -35,6 +35,7 @@ yarn-error.log*
 # do not commit any .env files to git, except for the .env.example file. https://create.t3.gg/en/usage/env-variables#using-environment-variables
 .env
 .env*.local
+.env*.production
 
 # vercel
 .vercel
@@ -44,3 +45,76 @@ yarn-error.log*
 
 # idea files
 .idea
+
+# Prisma engine temp files
+query_engine-*.tmp*
+
+# --- Electron / Packager & Builder Outputs ---
+/dist
+/dist-electron
+/electron-dist
+/release
+/releases
+/installer
+/installers
+/tmp/electron-*
+*.asar
+*.asar.unpacked
+
+# electron-builder artifacts
+*.AppImage
+*.dmg
+*.exe
+*.msi
+*.msix
+*.msixbundle
+*.blockmap
+*.snap
+*.deb
+*.rpm
+*.pacman
+*.apk
+*.pkg
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+
+# Squirrel / Windows updater
+RELEASES
+*.nupkg
+*.delta.nupkg
+
+# macOS code signing / provisioning leftovers
+*.plist~
+*.provisionprofile
+
+# Crash dumps & temp
+*.dmp
+*.tmp
+.crashes
+electron-debug.log
+console.log
+
+# Electron caches
+.electron
+.cache/electron
+.cache/electron-builder
+
+# Devtools extensions (auto-downloaded)
+Chrome DevTools Extensions
+
+# Packaged app directories sometimes created by tooling
+/app/dist
+/app/build
+/app/out
+
+# If you don't want to commit generated Prisma electron client bundle
+src/server/generated/electron/
+
+# all log files
+**.log
+
+# dev DB
+prisma/electron.db

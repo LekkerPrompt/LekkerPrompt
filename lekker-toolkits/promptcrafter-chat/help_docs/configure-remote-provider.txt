@@ -1,0 +1,60 @@
+Remote OpenRouter Proxy Provider Configuration (Gemma 3 27B)
+=================================================================
+
+⚠️ PRIVACY WARNING ⚠️
+This option sends your prompts and chats to a remote server using Google's Gemma 3 27B model.
+Your data leaves your computer and may be logged, stored, or processed by external services.
+
+RECOMMENDED: Set up Ollama locally for the same performance with complete privacy.
+With Ollama, all processing stays on your machine with no external data transmission.
+
+Purpose: allow Electron users without local Ollama to use the hosted Gemma 3 27B endpoint.
+
+USER CONSENT REQUIRED:
+Before enabling this provider, users must acknowledge they understand:
+1. Their prompts/chats will be sent to external servers (OpenRouter + Google's Gemma 3 27B)
+2. Data privacy cannot be guaranteed with remote processing
+3. Local Ollama setup provides identical functionality with complete privacy
+4. They accept the privacy trade-off for convenience
+
+AppSetting keys already in use for local model:
+  MODEL_PROVIDER
+  MODEL_BASE_URL
+  MODEL_NAME
+
+For remote proxy usage we reuse these fields:
+  MODEL_PROVIDER = openrouter-proxy
+  MODEL_BASE_URL = https://promptcrafter.sammyhamwi.ai   (no trailing slash)
+  MODEL_NAME = <PROXY_AUTH_TOKEN value> (shared secret token)
+
+Security note: Storing the proxy auth token in the database means a user with access to the local SQLite file could copy it. Consider future enhancement: encrypt before storing (e.g., using a derived key) or prompt user to enter token at startup and keep only in memory.
+
+Manual DB setup (sqlite):
+If not using UI, open prisma studio or run code to call writeLocalModelConfig.
+
+In code (DevTools / script):
+import { writeLocalModelConfig, setPrivacyConsentForRemoteAPI } from '@/server/local-model';
+
+// Step 1: User must acknowledge privacy risks
+await setPrivacyConsentForRemoteAPI(true);
+
+// Step 2: Configure provider
+await writeLocalModelConfig({
+  provider: 'openrouter-proxy',
+  baseUrl: 'https://promptcrafter.sammyhamwi.ai',
+  model: 'YOUR_PROXY_AUTH_TOKEN'
+});
+
+Validation: Currently validateLocalModelConnection only supports 'ollama'; remote proxy skipped. Future: add a lightweight HEAD /healthz check for provider==='openrouter-proxy'.
+
+Switching back to Ollama:
+await writeLocalModelConfig({ provider: 'ollama', baseUrl: 'http://localhost:11434', model: 'gemma:7b' });
+
+Troubleshooting:
+- "Privacy consent required" -> User must call setPrivacyConsentForRemoteAPI(true) before using remote Gemma 3 27B
+- 401 errors -> token mismatch or missing 'x-proxy-auth' header inclusion; ensure model field holds correct token.
+- Timeout -> remote proxy unreachable; test curl https://promptcrafter.sammyhamwi.ai/healthz
+
+Revoking consent:
+import { setPrivacyConsentForRemoteAPI } from '@/server/local-model';
+await setPrivacyConsentForRemoteAPI(false);  // Blocks remote API calls until re-accepted

@@ -1,7 +1,10 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { Icon } from "@/components/Icon";
+import { createPortal } from 'react-dom';
 import { api } from "@/trpc/react";
+import { CustomSelect } from "@/components/CustomSelect";
 
 type Mode = "build" | "enhance";
 type TaskType = "general" | "coding" | "image" | "research" | "writing" | "marketing";
@@ -74,28 +77,563 @@ interface FiltersSidebarProps {
 
 const cn = (...arr: Array<string | false | null | undefined>) => arr.filter(Boolean).join(" ");
 
+interface ModelInfo {
+  current: string | null;
+  available: string[];
+  error?: string;
+}
+
+const GemmaConnectionModal: React.FC<{ onClose: () => void; onModelSwitched?: () => void }> = ({ onClose, onModelSwitched }) => {
+  const [loading, setLoading] = useState(false);
+  const [modelInfo, setModelInfo] = useState<ModelInfo>({ current: null, available: [] });
+  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [baseUrl, setBaseUrl] = useState<string>('http://localhost:11434');
+  const [switching, setSwitching] = useState(false);
+  const [currentConfig, setCurrentConfig] = useState<any>(null);
+  const [testing, setTesting] = useState(false);
+  const [testResults, setTestResults] = useState<{
+    show: boolean;
+    success: boolean;
+    url: string;
+    models?: string[];
+    error?: string;
+    duration?: number;
+  }>({ show: false, success: false, url: '' });
+
+  // Fetch current configuration and available models
+  const fetchModels = useCallback(async () => {
+    setLoading(true);
+    try {
+      // First get current config
+      const configRes = await fetch('/api/model/config');
+      const configData = await configRes.json();
+      
+      if (configData.config) {
+        setCurrentConfig(configData.config);
+        setBaseUrl(configData.config.baseUrl || 'http://localhost:11434');
+      }
+
+      // Then get available models
+      const res = await fetch('/api/model/available');
+      const data = await res.json();
+      setModelInfo(data);
+      setSelectedModel(data.current || '');
+    } catch (err) {
+      console.error('Failed to fetch models:', err);
+      setModelInfo({ current: null, available: [], error: 'Failed to fetch models' });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchModels();
+  }, [fetchModels]);
+
+  // Function to test connection and fetch models from a specific URL
+  const testConnection = async (url: string) => {
+    console.log('testConnection called with:', url);
+    setTesting(true);
+    console.log('setTesting(true) called');
+    
+    const startTime = Date.now();
+    
+    try {
+      console.log('Starting fetch request...');
+      const res = await fetch(`/api/model/available?baseUrl=${encodeURIComponent(url)}`);
+      console.log('Fetch response received:', res.status);
+      const data = await res.json();
+      console.log('Response data:', data);
+      
+      const duration = Date.now() - startTime;
+      
+      if (data.error) {
+        console.log('Error in response:', data.error);
+        setModelInfo({ current: modelInfo.current, available: [], error: data.error });
+        setTestResults({
+          show: true,
+          success: false,
+          url,
+          error: data.error,
+          duration
+        });
+        return { success: false, error: data.error };
+      } else {
+        console.log('Success, available models:', data.available);
+        setModelInfo({ current: modelInfo.current, available: data.available, error: undefined });
+        setTestResults({
+          show: true,
+          success: true,
+          url,
+          models: data.available,
+          duration
+        });
+        return { success: true, models: data.available };
+      }
+    } catch (e: any) {
+      console.log('Exception caught:', e);
+      const error = 'Connection failed';
+      const duration = Date.now() - startTime;
+      setModelInfo({ current: modelInfo.current, available: [], error });
+      setTestResults({
+        show: true,
+        success: false,
+        url,
+        error,
+        duration
+      });
+      return { success: false, error };
+    } finally {
+      console.log('setTesting(false) called');
+      setTesting(false);
+    }
+  };
+
+  const handleSwitchModel = async () => {
+    if (!selectedModel) return;
+    
+    // Validate base URL format
+    if (!/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(baseUrl.replace(/\/$/, ""))) {
+      alert('Base URL must be a local address (e.g., http://localhost:11434)');
+      return;
+    }
+    
+    setSwitching(true);
+    try {
+      const res = await fetch('/api/model/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'ollama',
+          baseUrl: baseUrl,
+          model: selectedModel,
+        }),
+      });
+      
+      if (res.ok) {
+        await fetchModels(); // Refresh to show new current model
+        onModelSwitched?.(); // Notify parent component
+        alert(`Successfully switched to ${selectedModel} at ${baseUrl}`);
+      } else {
+        const error = await res.json();
+        alert(`Failed to switch model: ${error.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      alert(`Failed to switch model: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setSwitching(false);
+    }
+  };
+
+  return (
+    <div 
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={(e) => {
+        // Only close if clicking the backdrop, not the modal content
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div className="w-full max-w-md rounded-lg bg-gray-900 border border-gray-700 p-6 shadow-xl">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white">Local Gemma 3 Model(s)</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-gray-400 hover:text-white transition-colors"
+          >
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="text-center py-4">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+            <p className="mt-2 text-gray-400">Loading models...</p>
+          </div>
+        ) : testing ? (
+          <div className="text-center py-4">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            <p className="mt-2 text-gray-400">Testing connection...</p>
+          </div>
+        ) : modelInfo.error ? (
+          <div className="text-center py-4">
+            <p className="text-red-400 mb-2">{
+              modelInfo.error === 'not-configured' ? 'No model configuration found' :
+              modelInfo.error === 'unreachable' ? 'Cannot connect to Ollama server' :
+              modelInfo.error === 'timeout' ? 'Connection timed out' :
+              modelInfo.error
+            }</p>
+            <button
+              onClick={fetchModels}
+              className="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Current Model: <span className="text-white">{modelInfo.current || 'None'}</span>
+              </label>
+              {currentConfig && (
+                <p className="text-xs text-gray-400">
+                  Connected to: {currentConfig.baseUrl}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Base URL:
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                  placeholder="http://localhost:11434"
+                  className="flex-1 rounded-md border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('Test button clicked');
+                    testConnection(baseUrl);
+                  }}
+                  disabled={testing || switching}
+                  className="px-3 py-2 bg-gray-700 text-white text-sm rounded hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {testing ? '...' : 'Test'}
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Enter the URL where Ollama is running (e.g., http://localhost:11434)
+              </p>
+            </div>
+
+            {modelInfo.available.length > 0 ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Switch to:
+                </label>
+                <CustomSelect
+                  value={selectedModel}
+                  onChange={setSelectedModel}
+                  options={modelInfo.available.map((model) => ({
+                    value: model,
+                    label: model
+                  }))}
+                  placeholder="Select model..."
+                  className="w-full"
+                />
+              </div>
+            ) : (
+              <p className="text-gray-400 text-sm">No Gemma 3 models available at this URL</p>
+            )}
+
+            <div className="flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              {modelInfo.available.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleSwitchModel}
+                  disabled={switching || !selectedModel}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {switching ? 'Applying...' : 'Apply Configuration'}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+      
+      {/* Test Results Overlay */}
+      {testResults.show && (
+        <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-lg bg-gray-900 border border-gray-700 p-6 shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-white">
+                {testResults.success ? 'Connection Test - Success' : 'Connection Test - Failed'}
+              </h3>
+              <button
+                onClick={() => setTestResults({ ...testResults, show: false })}
+                className="text-gray-400 hover:text-white p-1 rounded hover:bg-gray-700"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-800">
+                <div className={`w-3 h-3 rounded-full ${testResults.success ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <div>
+                  <p className="text-white font-medium">
+                    {testResults.success ? 'Connection Successful' : 'Connection Failed'}
+                  </p>
+                  <p className="text-sm text-gray-400">
+                    Tested URL: {testResults.url}
+                  </p>
+                  {testResults.duration && (
+                    <p className="text-xs text-gray-500">
+                      Response time: {testResults.duration}ms
+                    </p>
+                  )}
+                </div>
+              </div>
+              
+              {testResults.success ? (
+                <div>
+                  <h4 className="text-white font-medium mb-2">Available Models:</h4>
+                  {testResults.models && testResults.models.length > 0 ? (
+                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                      {testResults.models.map((model, index) => (
+                        <div key={index} className="flex items-center gap-2 p-2 bg-gray-800 rounded text-sm">
+                          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                          <span className="text-gray-300">{model}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-gray-400 text-sm">No models found</p>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <h4 className="text-white font-medium mb-2">Error Details:</h4>
+                  <div className="p-3 bg-red-900/20 border border-red-500/30 rounded">
+                    <p className="text-red-300 text-sm">{testResults.error}</p>
+                  </div>
+                  <div className="mt-3 p-3 bg-gray-800 rounded text-xs text-gray-400">
+                    <p className="font-medium mb-2">Troubleshooting:</p>
+                    <ul className="space-y-1">
+                      <li>• Make sure Ollama is running on {testResults.url}</li>
+                      <li>• Check if the URL is correct and accessible</li>
+                      <li>• Verify that no firewall is blocking the connection</li>
+                      <li>• Ensure Ollama API is enabled and listening on the specified port</li>
+                    </ul>
+                  </div>
+                </div>
+              )}
+              
+              <div className="flex justify-end pt-4 border-t border-gray-700">
+                <button
+                  onClick={() => setTestResults({ ...testResults, show: false })}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const Avatar: React.FC<{ name?: string | null; email?: string | null; image?: string | null }> = ({ name, email, image }) => {
-  const fullName = name ?? (email ? email.split("@")[0] : undefined) ?? "User";
-  const visibleName = fullName.length > 10 ? fullName.slice(0, 10) : fullName;
-  const initials = fullName
-    .replace(/[^A-Za-z0-9 ]+/g, " ")
-    .trim()
-    .split(/\s+/)
-    .map((s) => s[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  // Always show a cog icon instead of initials per requirement
+  const fullName = name ?? (email ? email.split("@")[0] : undefined) ?? "App Settings";
+  const visibleName = 'App Settings';
   return (
     <div className="flex items-center gap-3">
       {image ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={image} alt={fullName} className="h-9 w-9 rounded-full object-cover" />
       ) : (
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-700 text-sm text-white">{initials}</div>
+  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-700 text-white"><Icon name="gear" /></div>
       )}
       <div className="min-w-0">
         <div className="truncate text-sm font-medium text-gray-100" title={fullName}>{visibleName}</div>
       </div>
+    </div>
+  );
+};
+
+const UserMenu: React.FC<{ user?: UserInfo; openAccount?: () => void; currentModel: string | null; onModelChange: (model: string) => void }> = ({ user, openAccount, currentModel, onModelChange }) => {
+  const [open, setOpen] = useState(false);
+  const [sysOpen, setSysOpen] = useState(false);
+  const [gemmaConnectionOpen, setGemmaConnectionOpen] = useState(false);
+  const sysBtnRef = useRef<HTMLButtonElement | null>(null);
+  const sysTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [submenuPos, setSubmenuPos] = useState<{top:number; left:number} | null>(null);
+  
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (sysTimeoutRef.current) {
+        clearTimeout(sysTimeoutRef.current);
+      }
+    };
+  }, []);
+  
+  const toggle = () => setOpen(o => !o);
+  const fullName = user?.name || user?.email?.split('@')[0] || 'User';
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={cn(
+          'group flex w-full items-center justify-between rounded-md border border-gray-700 bg-gray-800/50 px-2 py-1.5 text-left text-sm text-gray-200 transition',
+          'hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500'
+        )}
+  title="App Settings menu"
+      >
+        <span className="flex items-center gap-2">
+          <Avatar name={user?.name} email={user?.email ?? undefined} image={user?.image ?? undefined} />
+        </span>
+        <svg className={cn('ml-2 h-4 w-4 shrink-0 transition-transform', open && 'rotate-180')} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path d="M5 8l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="menu-panel absolute left-0 right-0 z-50 mt-2 backdrop-blur-sm animate-in fade-in slide-in-from-top-1 overflow-visible"
+        >
+          {/* System Settings first */}
+          <div className="relative">
+            <button
+              ref={sysBtnRef}
+              type="button"
+              onMouseEnter={() => {
+                // Clear any pending close timeout
+                if (sysTimeoutRef.current) {
+                  clearTimeout(sysTimeoutRef.current);
+                  sysTimeoutRef.current = null;
+                }
+                if (!sysOpen) {
+                  const r = sysBtnRef.current?.getBoundingClientRect();
+                  if (r) setSubmenuPos({ top: r.top, left: r.right + 4 });
+                  setSysOpen(true);
+                }
+              }}
+              onMouseLeave={() => {
+                // Set a timeout to close the submenu
+                sysTimeoutRef.current = setTimeout(() => {
+                  setSysOpen(false);
+                }, 150); // 150ms grace period
+              }}
+              onClick={() => {
+                // Clear timeout on click
+                if (sysTimeoutRef.current) {
+                  clearTimeout(sysTimeoutRef.current);
+                  sysTimeoutRef.current = null;
+                }
+                setSysOpen(s => {
+                  const next = !s;
+                  if (next) {
+                    const r = sysBtnRef.current?.getBoundingClientRect();
+                    if (r) setSubmenuPos({ top: r.top, left: r.right + 4 });
+                  }
+                  return next;
+                });
+              }}
+              className="flex items-center justify-between menu-item"
+              role="menuitem"
+              aria-haspopup="true"
+              aria-expanded={sysOpen}
+              aria-controls="user-menu-system-settings"
+              onKeyDown={(e) => { if (e.key === 'ArrowRight') { const r = sysBtnRef.current?.getBoundingClientRect(); if (r) setSubmenuPos({ top: r.top, left: r.right + 4 }); setSysOpen(true);} if (e.key === 'Escape') setSysOpen(false); }}
+            >
+              <span>System Settings</span>
+              <span className="text-[10px] opacity-60">▸</span>
+            </button>
+            {sysOpen && submenuPos && typeof document !== 'undefined' && createPortal(
+              <div
+                id="user-menu-system-settings"
+                role="menu"
+                className="menu-panel fixed z-[9999] w-56"
+                style={{ top: Math.max(8, submenuPos.top), left: submenuPos.left }}
+                onMouseEnter={() => {
+                  // Clear any pending close timeout when entering submenu
+                  if (sysTimeoutRef.current) {
+                    clearTimeout(sysTimeoutRef.current);
+                    sysTimeoutRef.current = null;
+                  }
+                }}
+                onMouseLeave={() => {
+                  // Close immediately when leaving submenu
+                  setSysOpen(false);
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => { window.dispatchEvent(new CustomEvent('open-db-location')); setOpen(false); setSysOpen(false); }}
+                  className="menu-item"
+                  role="menuitem"
+                >DB Location</button>
+                <button
+                  type="button"
+                  onClick={() => { window.dispatchEvent(new CustomEvent('open-system-prompts')); setOpen(false); setSysOpen(false); }}
+                  className="menu-item"
+                  role="menuitem"
+                >System Prompts</button>
+                <button
+                  type="button"
+                  onClick={() => { setGemmaConnectionOpen(true); setOpen(false); setSysOpen(false); }}
+                  className="menu-item"
+                  role="menuitem"
+                >Local Gemma 3 Model(s)</button>
+              </div>, document.body)
+            }
+          </div>
+          <button
+            type="button"
+            onClick={() => { setOpen(false); openAccount?.(); }}
+            className="menu-item"
+            role="menuitem"
+          >
+            Saved Data
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('open-provider-selection'));
+              setOpen(false);
+            }}
+            className="menu-item text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 focus:bg-indigo-500/10"
+            role="menuitem"
+          >
+            Change Provider
+          </button>
+        </div>
+      )}
+      {gemmaConnectionOpen && typeof document !== 'undefined' && createPortal(
+        <GemmaConnectionModal 
+          onClose={() => setGemmaConnectionOpen(false)}
+          onModelSwitched={async () => {
+            // Refresh current model when a switch happens
+            try {
+              const res = await fetch('/api/model/available');
+              const data = await res.json();
+              onModelChange(data.current);
+            } catch (err) {
+              console.error('Failed to refresh model after switch:', err);
+            }
+          }}
+        />, 
+        document.body
+      )}
     </div>
   );
 };
@@ -147,6 +685,35 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
   } = props;
 
   const [tab, setTab] = useState<"settings" | "chats">("settings");
+  const [currentModel, setCurrentModel] = useState<string | null>(null);
+
+  // Fetch current model on component mount
+  useEffect(() => {
+    const fetchCurrentModel = async () => {
+      try {
+        const res = await fetch('/api/model/available');
+        const data = await res.json();
+        setCurrentModel(data.current);
+        
+        // If gemma3:1b is connected and language is not English, set to English
+        if (data.current === 'gemma3:1b' && language !== 'English') {
+          setLanguage('English');
+        }
+      } catch (err) {
+        console.error('Failed to fetch current model:', err);
+      }
+    };
+    fetchCurrentModel();
+  }, [language, setLanguage]);
+
+  // Handle model change from the Gemma 3 Connection modal
+  const handleModelChanged = useCallback(async (newModel: string) => {
+    setCurrentModel(newModel);
+    // If gemma3:1b is connected and language is not English, set to English
+    if (newModel === 'gemma3:1b' && language !== 'English') {
+      setLanguage('English');
+    }
+  }, [language, setLanguage]);
 
   const sortedChats = useMemo(() => {
     return (chats ?? []).slice().sort((a, b) => b.updatedAt - a.updatedAt);
@@ -200,44 +767,7 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
 
   return (
     <div className="flex h-full w-80 flex-col overflow-hidden border-r border-gray-800 bg-gray-900 p-3 md:p-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Avatar name={user?.name} email={user?.email ?? undefined} image={user?.image ?? undefined} />
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className="rounded-md border border-gray-700 px-2.5 py-1.5 text-xs font-medium text-gray-200 transition hover:border-indigo-500 hover:text-white"
-            title="Account"
-            onClick={() => openAccount && openAccount()}
-          >
-            👤
-          </button>
-          <button
-            type="button"
-            className="rounded-md border border-gray-700 px-2.5 py-1.5 text-xs font-medium text-gray-200 transition hover:border-red-500 hover:text-white"
-            onClick={() => {
-              const box = document.createElement("div");
-              box.className = "fixed inset-0 z-50 flex items-center justify-center";
-              box.innerHTML = `
-                <div class=\"absolute inset-0 bg-black/60\"></div>
-                <div class=\"relative z-10 w-[92vw] max-w-sm rounded-xl border border-white/10 bg-gray-900 p-4 text-gray-100 shadow-2xl\">
-                  <div class=\"text-base font-semibold mb-2\">Confirm logout</div>
-                  <div class=\"text-sm text-gray-300\">Are you sure you want to log out?</div>
-                  <div class=\"mt-4 flex items-center justify-end gap-2\">
-                    <button id=\"pc_cancel\" class=\"rounded-md border border-gray-600 bg-gray-800 px-3 py-1.5 text-sm\">Cancel</button>
-                    <a id=\"pc_confirm\" href=\"/api/auth/signout\" class=\"rounded-md border border-red-600 bg-red-600/20 px-3 py-1.5 text-sm text-red-200\">Logout</a>
-                  </div>
-                </div>`;
-              document.body.appendChild(box);
-              const remove = () => box.remove();
-              document.getElementById("pc_cancel")?.addEventListener("click", () => remove(), { once: true });
-            }}
-          >
-            Logout
-          </button>
-        </div>
-      </div>
+      <UserMenu user={user} openAccount={openAccount} currentModel={currentModel} onModelChange={handleModelChanged} />
       <div className="mt-4 mx-1 flex items-center gap-2 rounded-md border border-gray-800 bg-gray-900/60 p-1 text-xs">
         <button
           className={cn(
@@ -263,25 +793,35 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
 
       {tab === "settings" ? (
       <div className="mt-4 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1 pl-1">
-        <div className="text-xs font-semibold text-gray-400">Presets</div>
+          <div className="flex items-center gap-2">
+            <div className="text-xs font-semibold text-gray-400">Presets</div>
+            <button
+              type="button"
+              onClick={() => openInfo && openInfo()}
+              className="cursor-pointer text-blue-300 hover:text-blue-200 transition inline-flex items-center justify-center h-4 w-4"
+              title="Learn about each setting"
+              aria-label="Preset info"
+            >
+              <Icon name="info" className="text-[13px]" />
+            </button>
+          </div>
         <div>
-          <select
+          <CustomSelect
             value={selectedPresetKey}
-            onChange={(e) => {
-              const key = e.target.value;
+            onChange={(key) => {
               setSelectedPresetKey(key);
               const p = presets.find((x) => (x.id ?? x.name) === key);
               if (p) applyPreset(p);
             }}
-            className="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 shadow-sm transition hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="" disabled>{loadingPresets ? "Loading…" : presets.length ? "Select a preset" : "No presets - create one!"}</option>
-            {presets.map((p) => (
-              <option key={p.id ?? p.name} value={p.id ?? p.name}>
-                {(defaultPresetId && p.id === defaultPresetId) ? "(Default) " : ""}{p.name}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: "", label: loadingPresets ? "Loading…" : presets.length ? "Select a preset" : "No presets - create one!", disabled: true },
+              ...presets.map((p) => ({
+                value: p.id ?? p.name,
+                label: `${(defaultPresetId && p.id === defaultPresetId) ? "(Default) " : ""}${p.name}`
+              }))
+            ]}
+            className="w-full"
+          />
           {selectedPreset && (
             <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-gray-400">
               <label className="inline-flex items-center gap-2">
@@ -347,16 +887,6 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
 
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <button
-              type="button"
-              onClick={() => openInfo && openInfo()}
-              className="inline-flex items-center gap-1 rounded border border-blue-500/50 bg-blue-500/10 px-2 py-1 text-[11px] font-medium text-blue-300 transition hover:bg-blue-500/20 hover:text-blue-200"
-              title="Learn about each setting"
-            >
-              ℹ️ Info
-            </button>
-          </div>
-          <div className="col-span-2">
             <label className="mb-1 block text-xs text-gray-400">Preset Name</label>
             <input
               value={selectedPreset ? renameName : presetName}
@@ -381,84 +911,92 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
           </div>
           <div>
             <label className="mb-1 block text-xs text-gray-400">Type</label>
-            <select
+            <CustomSelect
               value={taskType}
-              onChange={(e) => setTaskType(e.target.value as TaskType)}
-              className="w-full rounded-md border border-gray-700 bg-gray-800 px-2 py-2 text-xs text-gray-100 shadow-sm transition hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="general">General</option>
-              <option value="coding">Coding</option>
-              <option value="image">Image</option>
-              <option value="research">Research</option>
-              <option value="writing">Writing</option>
-              <option value="marketing">Marketing</option>
-            </select>
+              onChange={(value) => setTaskType(value as TaskType)}
+              options={[
+                { value: "general", label: "General" },
+                { value: "coding", label: "Coding" },
+                { value: "image", label: "Image" },
+                { value: "research", label: "Research" },
+                { value: "writing", label: "Writing" },
+                { value: "marketing", label: "Marketing" }
+              ]}
+              className="w-full text-xs"
+            />
           </div>
           <div>
             <label className="mb-1 block text-xs text-gray-400">Mode</label>
-            <select
+            <CustomSelect
               value={mode}
-              onChange={(e) => setMode(e.target.value as Mode)}
-              className="w-full rounded-md border border-gray-700 bg-gray-800 px-2 py-2 text-xs text-gray-100 shadow-sm transition hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="build">Build</option>
-              <option value="enhance">Enhance</option>
-            </select>
+              onChange={(value) => setMode(value as Mode)}
+              options={[
+                { value: "build", label: "Build" },
+                { value: "enhance", label: "Enhance" }
+              ]}
+              className="w-full text-xs"
+            />
           </div>
           <div>
             <label className="mb-1 block text-xs text-gray-400">Tone</label>
-            <select
+            <CustomSelect
               value={tone}
-              onChange={(e) => setTone(e.target.value as Tone)}
-              className="w-full rounded-md border border-gray-700 bg-gray-800 px-2 py-2 text-xs text-gray-100 shadow-sm transition hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="neutral">Neutral</option>
-              <option value="friendly">Friendly</option>
-              <option value="formal">Formal</option>
-              <option value="technical">Technical</option>
-              <option value="persuasive">Persuasive</option>
-            </select>
+              onChange={(value) => setTone(value as Tone)}
+              options={[
+                { value: "neutral", label: "Neutral" },
+                { value: "friendly", label: "Friendly" },
+                { value: "formal", label: "Formal" },
+                { value: "technical", label: "Technical" },
+                { value: "persuasive", label: "Persuasive" }
+              ]}
+              className="w-full text-xs"
+            />
           </div>
           <div>
             <label className="mb-1 block text-xs text-gray-400">Detail</label>
-            <select
+            <CustomSelect
               value={detail}
-              onChange={(e) => setDetail(e.target.value as Detail)}
-              className="w-full rounded-md border border-gray-700 bg-gray-800 px-2 py-2 text-xs text-gray-100 shadow-sm transition hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="brief">Brief</option>
-              <option value="normal">Normal</option>
-              <option value="detailed">Detailed</option>
-            </select>
+              onChange={(value) => setDetail(value as Detail)}
+              options={[
+                { value: "brief", label: "Brief" },
+                { value: "normal", label: "Normal" },
+                { value: "detailed", label: "Detailed" }
+              ]}
+              className="w-full text-xs"
+            />
           </div>
           <div>
             <label className="mb-1 block text-xs text-gray-400">Format</label>
-            <select
+            <CustomSelect
               value={format}
-              onChange={(e) => setFormat(e.target.value as Format)}
-              className="w-full rounded-md border border-gray-700 bg-gray-800 px-2 py-2 text-xs text-gray-100 shadow-sm transition hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="plain">Plain</option>
-              <option value="markdown">Markdown</option>
-              <option value="json">JSON</option>
-            </select>
+              onChange={(value) => setFormat(value as Format)}
+              options={[
+                { value: "plain", label: "Plain" },
+                { value: "markdown", label: "Markdown" },
+                { value: "json", label: "JSON" }
+              ]}
+              className="w-full text-xs"
+            />
           </div>
           <div>
             <label className="mb-1 block text-xs text-gray-400">Language</label>
-            <select
+            <CustomSelect
               value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-              className="w-full rounded-md border border-gray-700 bg-gray-800 px-2 py-2 text-xs text-gray-100 shadow-sm transition hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="English">English</option>
-              <option value="Dutch">Dutch</option>
-              <option value="Arabic">Arabic</option>
-              <option value="Mandarin Chinese">Mandarin Chinese</option>
-              <option value="Spanish">Spanish</option>
-              <option value="French">French</option>
-              <option value="Russian">Russian</option>
-              <option value="Urdu">Urdu</option>
-            </select>
+              onChange={(value) => setLanguage(value)}
+              options={[
+                { value: "English", label: "English" },
+                ...(currentModel !== 'gemma3:1b' ? [
+                  { value: "Dutch", label: "Dutch" },
+                  { value: "Arabic", label: "Arabic" },
+                  { value: "Mandarin Chinese", label: "Mandarin Chinese" },
+                  { value: "Spanish", label: "Spanish" },
+                  { value: "French", label: "French" },
+                  { value: "Russian", label: "Russian" },
+                  { value: "Urdu", label: "Urdu" }
+                ] : [])
+              ]}
+              className="w-full text-xs"
+            />
           </div>
         </div>
 
@@ -484,30 +1022,32 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block text-xs text-gray-400">Image Style</label>
-              <select
+              <CustomSelect
                 value={stylePreset}
-                onChange={(e) => setStylePreset(e.target.value)}
-                className="w-full rounded-md border border-gray-700 bg-gray-800 px-2 py-2 text-xs text-gray-100 shadow-sm transition hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="photorealistic">Photorealistic</option>
-                <option value="illustration">Illustration</option>
-                <option value="3d">3D</option>
-                <option value="anime">Anime</option>
-                <option value="watercolor">Watercolor</option>
-              </select>
+                onChange={(value) => setStylePreset(value)}
+                options={[
+                  { value: "photorealistic", label: "Photorealistic" },
+                  { value: "illustration", label: "Illustration" },
+                  { value: "3d", label: "3D" },
+                  { value: "anime", label: "Anime" },
+                  { value: "watercolor", label: "Watercolor" }
+                ]}
+                className="w-full text-xs"
+              />
             </div>
             <div>
               <label className="mb-1 block text-xs text-gray-400">Aspect Ratio</label>
-              <select
+              <CustomSelect
                 value={aspectRatio}
-                onChange={(e) => setAspectRatio(e.target.value)}
-                className="w-full rounded-md border border-gray-700 bg-gray-800 px-2 py-2 text-xs text-gray-100 shadow-sm transition hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="1:1">1:1</option>
-                <option value="16:9">16:9</option>
-                <option value="9:16">9:16</option>
-                <option value="4:3">4:3</option>
-              </select>
+                onChange={(value) => setAspectRatio(value)}
+                options={[
+                  { value: "1:1", label: "1:1" },
+                  { value: "16:9", label: "16:9" },
+                  { value: "9:16", label: "9:16" },
+                  { value: "4:3", label: "4:3" }
+                ]}
+                className="w-full text-xs"
+              />
             </div>
           </div>
         )}
@@ -1006,7 +1546,7 @@ function ChatsTab(props: {
                   className="flex min-w-0 flex-1 items-center gap-2 text-left"
                   title={c.title}
                 >
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-indigo-600/20 text-indigo-300">💬</div>
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-indigo-600/20 text-indigo-300"><Icon name="comments" /></div>
                   <div className="min-w-0">
                     <div className="truncate text-sm text-gray-200">{c.title || "Untitled"}</div>
                     <div className="text-[10px] text-gray-500">{new Date(c.updatedAt).toLocaleString()}</div>

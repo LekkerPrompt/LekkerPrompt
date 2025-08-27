@@ -1,10 +1,7 @@
-import NextAuth from "next-auth";
-import { cache } from "react";
+// Electron-only auth stub: always returns a local user session.
+export const auth = async () => ({ user: { id: "local-user", name: "Local User", email: null } });
+export const handlers = { GET: async () => {}, POST: async () => {} };
+export const signIn = async () => {};
+export const signOut = async () => {};
 
-import { authConfig } from "./config";
 
-const { auth: uncachedAuth, handlers, signIn, signOut } = NextAuth(authConfig);
-
-const auth = cache(uncachedAuth);
-
-export { auth, handlers, signIn, signOut };

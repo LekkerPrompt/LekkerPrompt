@@ -12,7 +12,7 @@ import superjson from "superjson";
 import { ZodError } from "zod";
 
 import { auth } from "@/server/auth";
-import { db } from "@/server/db";
+import { db, ensureDbReady } from "@/server/db";
 
 /**
  * 1. CONTEXT
@@ -28,12 +28,9 @@ import { db } from "@/server/db";
  */
 export const createTRPCContext = async (opts: { headers: Headers }) => {
 	const session = await auth();
-
-	return {
-		db,
-		session,
-		...opts,
-	};
+	// Ensure electron sqlite client fully initialized when in electron mode
+	const readyDb = await ensureDbReady();
+	return { db: readyDb, session, ...opts };
 };
 
 /**
@@ -122,12 +119,13 @@ export const protectedProcedure = t.procedure
 	.use(timingMiddleware)
 	.use(({ ctx, next }) => {
 		if (!ctx.session?.user) {
+			const isElectron = !!(process as any)?.versions?.electron;
+			if (isElectron) {
+				const session = { user: { id: "local-user" } } as any;
+				return next({ ctx: { session } });
+			}
 			throw new TRPCError({ code: "UNAUTHORIZED" });
 		}
-		return next({
-			ctx: {
-				// infers the `session` as non-nullable
-				session: { ...ctx.session, user: ctx.session.user },
-			},
-		});
+		return next({ ctx: { session: { ...ctx.session, user: ctx.session.user } } });
 	});
+

@@ -74,3 +74,149 @@ html::-webkit-scrollbar, body::-webkit-scrollbar {
 	-ms-overflow-style: none;
 	scrollbar-width: none;
 }
+
+/* Global pointer cursor for interactive elements */
+button, [role="button"], a, select, summary, [data-dropdown-trigger], input[type=checkbox], input[type=radio], label[for], .cursor-pointer, [data-interactive] {
+	cursor: pointer;
+}
+/* Disabled / aria-disabled elements should NOT show pointer */
+button:disabled, button[disabled], [role="button"][aria-disabled="true"], a[aria-disabled="true"], select:disabled, input[type=checkbox]:disabled, input[type=radio]:disabled, [data-interactive][aria-disabled="true"], .disabled, [data-disabled="true"] {
+	cursor: default !important;
+}
+/* Maintain text cursor for text entry fields */
+input[type=text], input[type=email], input[type=password], textarea, [contenteditable="true"] {
+	cursor: text;
+}
+
+/* ----------------------------- */
+/* Unified menu / dropdown sizes */
+/* ----------------------------- */
+/* Usage: wrap menu in .menu-panel (or rely on role=menu) and apply .menu-item to items. */
+.menu-panel,
+[role="menu"].menu-panel {
+	border: 1px solid rgba(55,65,81,1); /* gray-700 */
+	background: rgba(17,24,39,0.95); /* gray-900/95 */
+	box-shadow: 0 4px 12px -2px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.4);
+	padding: 4px 0; /* py-1 */
+	border-radius: 0.375rem; /* rounded-md */
+	min-width: 12rem;
+}
+.menu-item,
+[role="menu"] > button:not([data-compact]),
+[role="menu"] > a:not([data-compact]),
+[role="menu"] > div[role="menuitem"]:not([data-compact]) {
+	width: 100%;
+	text-align: left;
+	font-size: 0.875rem; /* text-sm */
+	line-height: 1.25rem; /* leading-snug-ish */
+	padding: 0.5rem 0.75rem; /* py-2 px-3 */
+	color: rgba(229,231,235,1); /* gray-200 */
+	background: transparent;
+	border: none;
+	font-weight: 400;
+	cursor: pointer;
+	transition: background 120ms, color 120ms;
+}
+[role="menu"] > button:not([data-compact]):hover,
+[role="menu"] > a:not([data-compact]):hover,
+[role="menu"] > div[role="menuitem"]:not([data-compact]):hover {
+	background: #1f2937; /* gray-800 */
+}
+.menu-divider { margin: 0.25rem 0; height:1px; background: rgba(55,65,81,0.7); }
+[role="menu"] > *[data-compact] { font-size: 0.6875rem; padding: 0.25rem 0.5rem; }
+
+/* Aggressive select styling for Electron apps - force override native styling */
+select:not([size]):not([multiple]) {
+	height: 2.25rem !important; /* h-9 */
+	border-radius: 0.375rem !important;
+	border: 1px solid rgba(55,65,81,1) !important; /* gray-700 - match menu-panel */
+	background: rgba(17,24,39,0.95) !important; /* gray-900/95 - match menu-panel */
+	background-color: rgba(17,24,39,0.95) !important;
+	padding: 0 2.25rem 0 0.75rem !important; /* px-3 with right padding for arrow */
+	font-size: 0.875rem !important;
+	line-height: 1.25rem !important;
+	color: rgba(229,231,235,1) !important; /* gray-200 - match menu-item */
+	font-family: inherit !important;
+	
+	/* Force remove native appearance */
+	appearance: none !important;
+	-webkit-appearance: none !important;
+	-moz-appearance: none !important;
+	-ms-appearance: none !important;
+	
+	/* Custom dropdown arrow */
+	background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='rgba(229,231,235,1)' stroke-width='2'%3e%3cpath d='M5 8l5 5 5-5' stroke-linecap='round' stroke-linejoin='round'/%3e%3c/svg%3e") !important;
+	background-repeat: no-repeat !important;
+	background-position: right 0.5rem center !important;
+	background-size: 1rem !important;
+	
+	/* Styling to match menu-panel */
+	box-shadow: 0 4px 12px -2px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.4) !important;
+	cursor: pointer !important;
+	transition: all 120ms ease !important;
+}
+
+/* Force focus and hover states */
+select:focus { 
+	outline: 2px solid #4f46e5 !important; 
+	outline-offset: 0 !important; 
+	border-color: #4f46e5 !important;
+	background: rgba(17,24,39,0.95) !important;
+}
+
+select:hover {
+	border-color: rgba(75,85,99,1) !important; /* gray-600 */
+	background: rgba(31,41,55,1) !important; /* gray-800 */
+	background-color: rgba(31,41,55,1) !important;
+}
+
+/* Target option elements specifically for Windows/Electron */
+select option {
+	background: rgba(17,24,39,0.95) !important;
+	color: rgba(229,231,235,1) !important;
+	padding: 8px 12px !important;
+}
+
+/* Force custom styling class for stubborn select elements */
+.custom-select {
+	height: 2.25rem !important;
+	border-radius: 0.375rem !important;
+	border: 1px solid rgba(55,65,81,1) !important;
+	background: rgba(17,24,39,0.95) !important;
+	background-color: rgba(17,24,39,0.95) !important;
+	padding: 0 2.25rem 0 0.75rem !important;
+	font-size: 0.875rem !important;
+	line-height: 1.25rem !important;
+	color: rgba(229,231,235,1) !important;
+	font-family: inherit !important;
+	appearance: none !important;
+	-webkit-appearance: none !important;
+	-moz-appearance: none !important;
+	-ms-appearance: none !important;
+	background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='rgba(229,231,235,1)' stroke-width='2'%3e%3cpath d='M5 8l5 5 5-5' stroke-linecap='round' stroke-linejoin='round'/%3e%3c/svg%3e") !important;
+	background-repeat: no-repeat !important;
+	background-position: right 0.5rem center !important;
+	background-size: 1rem !important;
+	box-shadow: 0 4px 12px -2px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.4) !important;
+	cursor: pointer !important;
+	transition: all 120ms ease !important;
+}
+
+/* Additional Windows/Electron specific overrides */
+select.custom-select::-ms-expand {
+	display: none !important;
+}
+
+select.custom-select::-webkit-appearance {
+	-webkit-appearance: none !important;
+}
+
+select.custom-select:-moz-focusring {
+	color: transparent !important;
+	text-shadow: 0 0 0 rgba(229,231,235,1) !important;
+}
+
+/* Force specific overrides for text size classes */
+.custom-select.text-xs {
+	font-size: 0.75rem !important;
+}

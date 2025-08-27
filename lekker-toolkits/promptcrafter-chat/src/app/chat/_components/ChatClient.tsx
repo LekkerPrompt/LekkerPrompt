@@ -1,8 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Icon } from "@/components/Icon";
 import FiltersSidebar from "./FiltersSidebar";
 import { api } from "@/trpc/react";
+import { isElectronRuntime } from '@/lib/runtime';
+import Image from "next/image";
+import { CustomSelect } from "@/components/CustomSelect";
 
 type Mode = "build" | "enhance";
 type TaskType = "general" | "coding" | "image" | "research" | "writing" | "marketing";
@@ -51,7 +55,7 @@ export default function ChatClient({ user }: ChatClientProps) {
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [accountOpen, setAccountOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false); // Saved Data modal
   const [infoOpen, setInfoOpen] = useState(false);
   const renderMessageContent = useCallback((text: string, messageId?: string) => {
     const trimmed = text.trim();
@@ -198,6 +202,17 @@ export default function ChatClient({ user }: ChatClientProps) {
     el.style.height = `${needed}px`;
     el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
   }, [MAX_INPUT_HEIGHT]);
+
+  // Shrink back down when input becomes empty (e.g., after send or manual clear)
+  useEffect(() => {
+    if (input.trim().length === 0) {
+      const el = inputRef.current;
+      if (el) {
+        el.style.height = 'auto';
+        el.style.overflowY = 'hidden';
+      }
+    }
+  }, [input]);
 
   // Close sidebar on Escape
   useEffect(() => {
@@ -360,6 +375,12 @@ export default function ChatClient({ user }: ChatClientProps) {
     if (!canSend) return;
     const text = input.trim();
     setInput("");
+    // Immediately reset height so it shrinks without waiting for rerender/layout thrash
+    const el = inputRef.current;
+    if (el) {
+      el.style.height = 'auto';
+      el.style.overflowY = 'hidden';
+    }
     setError(null);
     // Ensure chat exists (create in DB if needed)
     let chatId: string;
@@ -384,43 +405,80 @@ export default function ChatClient({ user }: ChatClientProps) {
     setLoading(true);
     try {
       const base = process.env.NEXT_PUBLIC_BASE_PATH || "";
-      const res = await fetch(`${base}/api/gemini/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          input: text,
-          mode,
-          taskType,
-          options: {
-            tone,
-            detail,
-            format,
-            language: language || undefined,
-            temperature,
-            // type-specific
-            stylePreset: taskType === "image" ? (stylePreset as any) : undefined,
-            aspectRatio: taskType === "image" ? (aspectRatio as any) : undefined,
-            includeTests: taskType === "coding" ? includeTests : undefined,
-            requireCitations: taskType === "research" ? requireCitations : undefined,
-          },
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "Request failed");
-      const assistantMsg: MessageItem = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: data.output as string,
-      };
-      setMessages((m) => {
-        const next = [...m, assistantMsg];
-        return next.slice(Math.max(0, next.length - 50));
-      });
-      // Append assistant message to DB
-      try {
-        await appendMessages.mutateAsync({ chatId, messages: [{ id: assistantMsg.id, role: assistantMsg.role, content: assistantMsg.content }], cap: 50 });
-      } catch {
-        // noop
+      if (isElectronRuntime()) {
+        // Streaming via SSE
+        const controller = new AbortController();
+  const res = await fetch(`/api/googleai/chat/stream`, {
+          method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              input: text,
+              mode,
+              taskType,
+              options: { tone, detail, format, language: language || undefined, temperature, stylePreset: taskType === 'image' ? stylePreset : undefined, aspectRatio: taskType === 'image' ? aspectRatio : undefined, includeTests: taskType === 'coding' ? includeTests : undefined, requireCitations: taskType === 'research' ? requireCitations : undefined }
+            }),
+            signal: controller.signal
+        });
+        if (!res.ok || !res.body) throw new Error('Stream request failed');
+        const reader = res.body.getReader();
+  let assistantId = crypto.randomUUID();
+  let assistantContentBuffer = '';
+  setMessages(m => [...m, { id: assistantId, role: 'assistant', content: '' }]);
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+            if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() || '';
+          for (const p of parts) {
+            if (!p.startsWith('data:')) continue;
+            const payload = p.slice(5).trim();
+            try {
+              const obj = JSON.parse(payload);
+              if (obj.delta) {
+                assistantContentBuffer += obj.delta;
+                const delta = obj.delta; // capture
+                setMessages(m => m.map(msg => msg.id === assistantId ? { ...msg, content: msg.content + delta } : msg));
+              } else if (obj.done) {
+                // persist using accumulated buffer to avoid stale closure
+                const finalContent = assistantContentBuffer;
+                try { await appendMessages.mutateAsync({ chatId, messages: [{ id: assistantId, role: 'assistant', content: finalContent }], cap: 50 }); } catch {}
+              } else if (obj.error) {
+                throw new Error(obj.error);
+              }
+            } catch {
+              // ignore malformed
+            }
+          }
+        }
+      } else {
+  const res = await fetch(`${base}/api/googleai/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            input: text,
+            mode,
+            taskType,
+            options: {
+              tone,
+              detail,
+              format,
+              language: language || undefined,
+              temperature,
+              stylePreset: taskType === 'image' ? stylePreset : undefined,
+              aspectRatio: taskType === 'image' ? aspectRatio : undefined,
+              includeTests: taskType === 'coding' ? includeTests : undefined,
+              requireCitations: taskType === 'research' ? requireCitations : undefined,
+            },
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error ?? 'Request failed');
+        const assistantMsg: MessageItem = { id: crypto.randomUUID(), role: 'assistant', content: data.output as string };
+        setMessages(m => { const next = [...m, assistantMsg]; return next.slice(Math.max(0, next.length - 50)); });
+        try { await appendMessages.mutateAsync({ chatId, messages: [{ id: assistantMsg.id, role: assistantMsg.role, content: assistantMsg.content }], cap: 50 }); } catch {}
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -486,7 +544,7 @@ export default function ChatClient({ user }: ChatClientProps) {
       <div
         className={cn(
           "fixed inset-0 z-30 bg-black/50 transition-opacity md:hidden",
-          sidebarOpen ? "opacity-100 visible" : "opacity-0 invisible"
+          sidebarOpen ? "opacity-100 visible" : "opacity-0 invisible pointer-events-none"
         )}
         onClick={() => setSidebarOpen(false)}
       />
@@ -556,20 +614,12 @@ export default function ChatClient({ user }: ChatClientProps) {
               aria-label="Open filters sidebar"
               title="Toggle sidebar"
             >
-              ☰
+              <Icon name="bars" />
             </button>
-            <div className="text-lg font-semibold text-blue-400">PromptCrafter by <a href="https://sammyhamwi.ai" target="_blank" className="text-blue-400 underline"><i>sammyhamwi.ai</i></a></div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={startNewChat}
-              className="inline-flex items-center gap-2 whitespace-nowrap rounded-md bg-indigo-600 px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400/50"
-              aria-label="Start a new chat"
-              title="Start a new chat"
-            >
-              + New Chat
-            </button>
+            <div className="flex items-center text-lg font-semibold text-blue-400">
+              <Image src="/branding/favicon-16x16.png" alt="PromptCrafter icon" width={16} height={16} className="w-4 h-4 mr-2" priority />
+              PromptCrafter
+            </div>
           </div>
         </div>
 
@@ -579,26 +629,25 @@ export default function ChatClient({ user }: ChatClientProps) {
             <div className="flex items-center gap-2">
               <span className="text-[10px] uppercase tracking-wider text-gray-400">Preset</span>
               <div className="relative flex-1">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs">{defaultPresetId && currentPreset?.id === defaultPresetId ? "★" : "🎛️"}</span>
-                <select
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs">{defaultPresetId && currentPreset?.id === defaultPresetId ? <Icon name="star" className="text-amber-400" /> : <Icon name="sliders" />}</span>
+                <CustomSelect
                   value={selectedPresetKey}
-                  onChange={(e) => {
-                    const key = e.target.value;
+                  onChange={(key) => {
                     setSelectedPresetKey(key);
                     const p = presets.find((x) => (x.id ?? x.name) === key);
                     if (p) applyPreset(p);
                   }}
+                  options={[
+                    { value: "", label: "Apply preset…", disabled: true },
+                    ...presets.map((p) => ({
+                      value: p.id ?? p.name,
+                      label: `${(defaultPresetId && p.id === defaultPresetId) ? "(Default) " : ""}${p.name}`
+                    }))
+                  ]}
                   aria-label="Apply preset"
                   title={currentPreset?.name || "Apply preset"}
-                  className="w-full appearance-none rounded-full border border-white/10 bg-gray-900/60 pl-8 pr-7 py-2 text-xs text-gray-200 shadow-sm transition hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-400/40"
-                >
-                  <option value="" disabled>Apply preset…</option>
-                  {presets.map((p) => (
-                    <option key={p.id ?? p.name} value={p.id ?? p.name}>
-                      {(defaultPresetId && p.id === defaultPresetId) ? "(Default) " : ""}{p.name}
-                    </option>
-                  ))}
-                </select>
+                  className="w-full pl-8 pr-7 py-2 text-xs rounded-full"
+                />
                 <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">▾</span>
               </div>
             </div>
@@ -669,26 +718,25 @@ export default function ChatClient({ user }: ChatClientProps) {
             <div className="flex items-end gap-3">
               <div className="relative hidden sm:block">
                 <label className="sr-only">Preset</label>
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs">{defaultPresetId && currentPreset?.id === defaultPresetId ? "★" : "🎛️"}</span>
-                <select
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs">{defaultPresetId && currentPreset?.id === defaultPresetId ? <Icon name="star" className="text-amber-400" /> : <Icon name="sliders" />}</span>
+                <CustomSelect
                   value={selectedPresetKey}
-                  onChange={(e) => {
-                    const key = e.target.value;
+                  onChange={(key) => {
                     setSelectedPresetKey(key);
                     const p = presets.find((x) => (x.id ?? x.name) === key);
                     if (p) applyPreset(p);
                   }}
+                  options={[
+                    { value: "", label: "Apply preset…", disabled: true },
+                    ...presets.map((p) => ({
+                      value: p.id ?? p.name,
+                      label: `${(defaultPresetId && p.id === defaultPresetId) ? "(Default) " : ""}${p.name}`
+                    }))
+                  ]}
                   aria-label="Apply preset"
                   title={currentPreset?.name || "Apply preset"}
-                  className="w-64 h-11 shrink-0 appearance-none rounded-2xl border border-white/10 bg-gray-900/60 pl-8 pr-8 text-xs text-gray-200 shadow-sm transition hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-400/40"
-                >
-                  <option value="" disabled>Apply preset…</option>
-                  {presets.map((p) => (
-                    <option key={p.id ?? p.name} value={p.id ?? p.name}>
-                      {(defaultPresetId && p.id === defaultPresetId) ? "(Default) " : ""}{p.name}
-                    </option>
-                  ))}
-                </select>
+                  className="w-64 h-11 shrink-0 pl-8 pr-8 text-xs rounded-2xl"
+                />
                 <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">▾</span>
               </div>
               <textarea
@@ -713,6 +761,15 @@ export default function ChatClient({ user }: ChatClientProps) {
               >
                 Send
               </button>
+              <button
+                type="button"
+                onClick={startNewChat}
+                className="flex h-11 w-11 items-center justify-center rounded-lg border border-white/10 bg-gray-800 text-white shadow-sm transition hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-400/50"
+                aria-label="Start a new chat"
+                title="New chat"
+              >
+                <span className="text-lg font-light">+</span>
+              </button>
             </div>
           </div>
         </div>
@@ -722,7 +779,7 @@ export default function ChatClient({ user }: ChatClientProps) {
             className="fixed inset-0 z-50 flex items-center justify-center"
             aria-modal="true"
             role="dialog"
-            aria-label={helpOpen ? "How to use PromptCrafter" : infoOpen ? "Prompt settings info" : "Account"}
+            aria-label={helpOpen ? "How to use PromptCrafter" : infoOpen ? "Prompt settings info" : "Saved Data"}
           >
             <div className="absolute inset-0 bg-black/60" onClick={() => { setHelpOpen(false); setAccountOpen(false); setInfoOpen(false); }} />
             <div
@@ -736,25 +793,25 @@ export default function ChatClient({ user }: ChatClientProps) {
                 aria-label="Close help"
                 title="Close"
               >
-                ✕
+                <Icon name="close" />
               </button>
-              <div className="mb-3 text-lg font-semibold">{helpOpen ? "Tutorial" : infoOpen ? "Prompt Settings Info" : "Account"}</div>
+              <div className="mb-3 text-lg font-semibold">{helpOpen ? "Tutorial" : infoOpen ? "Prompt Settings Info" : "Saved Data"}</div>
               {helpOpen ? (
               <div className="space-y-4 text-sm">
                 <div className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-800/40 p-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600/20 text-indigo-300">💬</div>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600/20 text-indigo-300"><Icon name="comments" /></div>
                   <div className="flex-1">
                     <div className="font-medium">Chat Basics</div>
                     <ul className="mt-1 list-disc space-y-1 pl-5 text-gray-300">
                       <li>Type your message and click <span className="rounded border border-white/20 px-1 py-0.5">Send</span> or press <span className="rounded border border-white/20 px-1 py-0.5">Enter</span>. Use <span className="rounded border border-white/20 px-1 py-0.5">Shift</span> + <span className="rounded border border-white/20 px-1 py-0.5">Enter</span> for a new line.</li>
                       <li>Use the preset selector near the input (mobile: above, desktop: left of the input) to quickly apply saved settings. Defaults show as <em>(Default)</em>.</li>
-                      <li>Click <span className="rounded border border-white/20 px-1 py-0.5">ℹ️ Info</span> above <em>Preset Name</em> to learn what each setting does.</li>
+                      <li>Click <span className="rounded border border-white/20 px-1 py-0.5"><Icon name="info" className="inline" /> Info</span> above <em>Preset Name</em> to learn what each setting does.</li>
                       <li>Code/JSON/Markdown blocks render with a copy button; copying excludes the triple backticks.</li>
                     </ul>
                   </div>
                 </div>
                 <div className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-800/40 p-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-600/20 text-emerald-300">🛠️</div>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-600/20 text-emerald-300"><Icon name="tools" /></div>
                   <div className="flex-1">
                     <div className="font-medium">Prompt Settings & Presets</div>
                     <ul className="mt-1 list-disc space-y-1 pl-5 text-gray-300">
@@ -767,12 +824,12 @@ export default function ChatClient({ user }: ChatClientProps) {
                   </div>
                 </div>
                 <div className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-800/40 p-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600/20 text-blue-300">📜</div>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600/20 text-blue-300"><Icon name="scroll" /></div>
                   <div className="flex-1">
                     <div className="font-medium">Chats</div>
                     <ul className="mt-1 list-disc space-y-1 pl-5 text-gray-300">
                       <li>Your chat history is in the Chats tab. Click a chat to reopen it; use the <span className="rounded border border-white/20 px-1 py-0.5">Select</span> mode to export and delete chats.</li>
-                      <li>Click <span className="rounded border border-white/20 px-1 py-0.5">+ New Chat</span> to start fresh.</li>
+                      <li>Click the <span className="rounded border border-white/20 px-1 py-0.5">+</span> button next to Send to start fresh.</li>
                     </ul>
                   </div>
                 </div>
@@ -827,10 +884,10 @@ export default function ChatClient({ user }: ChatClientProps) {
               ) : (
                 <div className="space-y-4 text-sm">
                   <div className="flex items-center gap-3 rounded-lg border border-gray-800 bg-gray-800/40 p-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-700 text-sm text-white">{(user?.name ?? user?.email ?? "U").slice(0,2).toUpperCase()}</div>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-700 text-sm text-white"><Icon name="db" /></div>
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-medium text-gray-100">{user?.name ?? user?.email ?? "User"}</div>
-                      {user?.email && <div className="text-xs text-gray-400">{user.email}</div>}
+                      <div className="truncate text-sm font-medium text-gray-100">Saved Data</div>
+                      <div className="text-xs text-gray-400">Manage locally stored chats & presets.</div>
                     </div>
                   </div>
                   <div className="rounded-lg border border-gray-800 bg-gray-800/40 p-3">

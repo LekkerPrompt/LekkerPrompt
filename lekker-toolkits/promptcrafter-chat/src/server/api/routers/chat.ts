@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+const localUserId = 'local-user';
 
 const MessageSchema = z.object({
   id: z.string(),
@@ -17,8 +18,11 @@ export const chatRouter = createTRPCRouter({
       updatedAt: Date;
       _count: { messages: number };
     };
-    const chats: ChatSummary[] = await ctx.db.chat.findMany({
-      where: { userId: ctx.session.user.id },
+    const isElectron = !!(process as any)?.versions?.electron;
+    const uid = isElectron ? localUserId : ctx.session.user.id;
+  // ctx.db now guaranteed ready in context creation
+  const chats: ChatSummary[] = await ctx.db.chat.findMany({
+      where: { userId: uid },
       orderBy: { updatedAt: "desc" },
       select: { id: true, title: true, updatedAt: true, _count: { select: { messages: true } } },
     });
@@ -28,9 +32,11 @@ export const chatRouter = createTRPCRouter({
   create: protectedProcedure
     .input(z.object({ title: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
-      const chat = await ctx.db.chat.create({
+      const isElectron = !!(process as any)?.versions?.electron;
+      const uid = isElectron ? localUserId : ctx.session.user.id;
+  const chat = await ctx.db.chat.create({
         data: {
-          userId: ctx.session.user.id,
+          userId: uid,
           title: input.title ?? null,
         },
         select: { id: true, title: true, createdAt: true, updatedAt: true },
@@ -43,7 +49,9 @@ export const chatRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { chatId, messages, cap } = input;
       // Verify ownership
-      const chat = await ctx.db.chat.findFirst({ where: { id: chatId, userId: ctx.session.user.id }, select: { id: true } });
+  const isElectron = !!(process as any)?.versions?.electron;
+  const uid = isElectron ? localUserId : ctx.session.user.id;
+  const chat = await ctx.db.chat.findFirst({ where: { id: chatId, userId: uid }, select: { id: true } });
       if (!chat) throw new Error("Not found");
 
       // Insert new messages
@@ -69,7 +77,9 @@ export const chatRouter = createTRPCRouter({
   get: protectedProcedure
     .input(z.object({ chatId: z.string(), limit: z.number().min(1).max(200).default(50) }))
     .query(async ({ ctx, input }) => {
-      const chat = await ctx.db.chat.findFirst({ where: { id: input.chatId, userId: ctx.session.user.id }, select: { id: true, title: true } });
+  const isElectron = !!(process as any)?.versions?.electron;
+  const uid = isElectron ? localUserId : ctx.session.user.id;
+  const chat = await ctx.db.chat.findFirst({ where: { id: input.chatId, userId: uid }, select: { id: true, title: true } });
       if (!chat) throw new Error("Not found");
       const messages = await ctx.db.chatMessage.findMany({
         where: { chatId: input.chatId },
@@ -83,7 +93,9 @@ export const chatRouter = createTRPCRouter({
   remove: protectedProcedure
     .input(z.object({ chatId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      await ctx.db.chat.delete({ where: { id: input.chatId, userId: ctx.session.user.id } as any });
+  const isElectron = !!(process as any)?.versions?.electron;
+  const uid = isElectron ? localUserId : ctx.session.user.id;
+  await ctx.db.chat.delete({ where: { id: input.chatId, userId: uid } as any });
       return { ok: true };
     }),
 });

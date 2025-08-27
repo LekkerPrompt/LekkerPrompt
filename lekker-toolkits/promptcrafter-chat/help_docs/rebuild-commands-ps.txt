@@ -1,0 +1,9 @@
+Remove-Item -Recurse -Force .next -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force out -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force dist -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force src/server/generated/electron -ErrorAction SilentlyContinue
+Get-ChildItem -Recurse -Filter 'query_engine-windows.dll.node.tmp*' | Remove-Item -Force
+Get-ChildItem $env:TEMP -Directory -Filter nextjs-electron-build-* | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+npm install
+npx prisma generate
+npm run dist:win
