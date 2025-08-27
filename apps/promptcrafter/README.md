@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>PromptCrafter</strong> – local‑first desktop & web app for structured prompt building.
+  <strong>PromptCrafter</strong> – local privacy‑first Electron app for structured prompt building and enhancing.
 </p>
 
 <div align="center">
