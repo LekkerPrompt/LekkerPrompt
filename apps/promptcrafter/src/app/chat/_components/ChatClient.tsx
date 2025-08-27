@@ -657,7 +657,7 @@ export default function ChatClient({ user }: ChatClientProps) {
               <Icon name="bars" />
             </button>
             <div className="flex items-center text-lg font-semibold text-blue-400">
-              <Image src="public/branding/favicon-16x16.png" alt="PromptCrafter icon" width={16} height={16} className="w-4 h-4 mr-2" priority />
+              <Image src="/icon.png" alt="PromptCrafter icon" width={20} height={20} className="w-4 h-4 mr-2" priority />
               PromptCrafter
             </div>
           </div>
