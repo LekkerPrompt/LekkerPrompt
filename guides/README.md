@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://sammyhamwi.ai/images/LekkerPrompt-logo-lrg.png" alt="LekkerPrompt Logo" width="400" height="400">
+  <img src="https://raw.githubusercontent.com/LekkerPrompt/LekkerPrompt/refs/heads/master/logo.png" alt="LekkerPrompt Logo" width="400" height="400">
 </p>
 
 <p align="center">
@@ -13,3 +13,4 @@
 # LekkerPrompt Guides
 
 Guides in progress!
+
