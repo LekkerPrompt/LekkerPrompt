@@ -86,7 +86,7 @@
 		},
 		"mac": {
 			"category": "public.app-category.productivity",
-			"icon": "build/icon.icns"
+			"icon": "public/branding/icon.icns"
 		},
 		"win": {
 			"target": [
