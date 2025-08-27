@@ -32,8 +32,15 @@ try {
   LOCALAPPDATA: path.join(tempBuildDir, 'AppData', 'Local'),
   };
 
-  console.log('Building Prisma for Electron...');
-  execSync('npm run build:electron:prisma', { stdio: 'inherit', env });
+  console.log('Building Prisma for Electron (direct prisma commands)...');
+  const prismaEnv = { ...env, DATABASE_URL: 'file:./electron.db' };
+  try {
+    execSync('npx prisma generate --schema=./prisma/schema.sqlite.prisma', { stdio: 'inherit', env: prismaEnv });
+    execSync('npx prisma db push --schema=./prisma/schema.sqlite.prisma', { stdio: 'inherit', env: prismaEnv });
+  } catch (err) {
+    console.error('Prisma build failed', err);
+    throw err;
+  }
 
   console.log('Building Next.js app (electron build phase)...');
   execSync('next build', { stdio: 'inherit', env, cwd: process.cwd() });
