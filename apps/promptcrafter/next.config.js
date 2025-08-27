@@ -23,6 +23,19 @@ const config = {
 	eslint: { ignoreDuringBuilds: true },
 	typescript: { ignoreBuildErrors: true },
 	images: { unoptimized: true },
+	// Workaround: on some Windows build environments the native lightningcss binary
+	// fails to be present (Cannot find module '../lightningcss.win32-x64-msvc.node').
+	// We alias to the wasm fallback only on Windows to avoid performance hit elsewhere.
+	webpack: (cfg) => {
+		if (process.platform === 'win32') {
+			cfg.resolve = cfg.resolve || {};
+			cfg.resolve.alias = {
+				...(cfg.resolve.alias || {}),
+				lightningcss: 'lightningcss-wasm',
+			};
+		}
+		return cfg;
+	},
 };
 
 export default config;
