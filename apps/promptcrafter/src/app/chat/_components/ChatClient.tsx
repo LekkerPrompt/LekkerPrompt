@@ -7,6 +7,7 @@ import { api } from "@/trpc/react";
 import { isElectronRuntime } from '@/lib/runtime';
 import Image from "next/image";
 import { CustomSelect } from "@/components/CustomSelect";
+import MessageFeedback from "@/components/MessageFeedback";
 
 type Mode = "build" | "enhance";
 type TaskType = "general" | "coding" | "image" | "research" | "writing" | "marketing";
@@ -18,6 +19,7 @@ interface MessageItem {
   id: string;
   role: "user" | "assistant";
   content: string;
+  userFeedback?: 'like' | 'dislike';
 }
 
 type UserInfo = { name?: string | null; image?: string | null; email?: string | null };
@@ -55,8 +57,49 @@ export default function ChatClient({ user }: ChatClientProps) {
   const [error, setError] = useState<string | null>(null);
   // Track whether a local model is configured (only then do we attempt streaming local generation)
   const [hasLocalModel, setHasLocalModel] = useState(false);
+  // Sidebar is always open on desktop (md: >=768px). We still track state for mobile.
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [helpOpen, setHelpOpen] = useState(false);
+  // Model display in header
+  const [modelDisplay, setModelDisplay] = useState<string | null>(null);
+
+  // Fetch model config for header banner
+  useEffect(() => {
+    const fetchModelDisplay = async () => {
+      try {
+        const res = await fetch('/api/model/config');
+        const data = await res.json();
+        const cfg = data?.config;
+        if (!cfg) { setModelDisplay(null); return; }
+        if (cfg.provider === 'openrouter-proxy') {
+          setModelDisplay('API Gemma 3 27B');
+          return;
+        }
+        if (cfg.provider === 'ollama' && typeof cfg.model === 'string') {
+          const size = (cfg.model.split(':')[1] || '').toUpperCase();
+          if (size) {
+            setModelDisplay(`Local Gemma 3 ${size}`);
+            return;
+          }
+        }
+        setModelDisplay(null);
+      } catch {
+        setModelDisplay(null);
+      }
+    };
+    fetchModelDisplay();
+    const handler = () => fetchModelDisplay();
+    window.addEventListener('MODEL_CHANGED', handler);
+    return () => window.removeEventListener('MODEL_CHANGED', handler);
+  }, []);
+
+  // On first mount, open sidebar automatically if desktop viewport.
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (window.matchMedia('(min-width: 768px)').matches) {
+        setSidebarOpen(true);
+      }
+    }
+  }, []);
   const [accountOpen, setAccountOpen] = useState(false); // Saved Data modal
   const [infoOpen, setInfoOpen] = useState(false);
   const renderMessageContent = useCallback((text: string, messageId?: string) => {
@@ -251,12 +294,26 @@ export default function ChatClient({ user }: ChatClientProps) {
   // Close sidebar on Escape
   useEffect(() => {
     if (!sidebarOpen) return;
+    // Escape should only close on mobile viewports.
+    if (typeof window === 'undefined') return;
+    const isDesktop = window.matchMedia('(min-width: 768px)').matches;
+    if (isDesktop) return; // Do nothing on desktop.
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setSidebarOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [sidebarOpen]);
+
+  // Keep sidebar forced open whenever switching to desktop viewport.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(min-width: 768px)');
+    const ensureOpen = () => { if (mq.matches) setSidebarOpen(true); };
+    ensureOpen();
+    mq.addEventListener('change', ensureOpen);
+    return () => mq.removeEventListener('change', ensureOpen);
+  }, []);
 
   useEffect(() => {
     const el = inputRef.current;
@@ -314,14 +371,18 @@ export default function ChatClient({ user }: ChatClientProps) {
   }, []);
 
   // Optional: restore last opened chat id from local storage (no writes back)
+  // Defer restoring last chat until chat list & session ready to avoid race with auth/protected procedures
+  const initialChatIdRef = useRef<string | null>(null);
+  const restoredLastChatRef = useRef(false);
   useEffect(() => {
     try {
-      const lastId = localStorage.getItem("pc_current_chat");
-      if (lastId) setCurrentChatId(lastId);
+      initialChatIdRef.current = localStorage.getItem('pc_current_chat');
     } catch {
-      // noop
+      initialChatIdRef.current = null;
     }
   }, []);
+
+  // We'll declare selectChat then run an effect to auto-load previous chat.
 
   const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading]);
   const applyPreset = useCallback((p: { name: string; mode: Mode; taskType: TaskType; options?: any }) => {
@@ -345,6 +406,8 @@ export default function ChatClient({ user }: ChatClientProps) {
     setInput("");
     setError(null);
     setCurrentChatId(null);
+    initialChatIdRef.current = null;
+    restoredLastChatRef.current = true; // prevent restoration effect later
     try { localStorage.removeItem("pc_current_chat"); } catch {}
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
@@ -390,17 +453,19 @@ export default function ChatClient({ user }: ChatClientProps) {
   }, [presetName, mode, taskType, tone, detail, format, language, temperature, stylePreset, aspectRatio, includeTests, requireCitations, presets]);
 
   const ensureChatId = useCallback(async (firstLineForTitle?: string) => {
-    if (currentChatId) {
-      // Prefer validating locally against loaded chat list to avoid noisy errors
+    // Only trust currentChatId if we've actually loaded messages for it (prevents stale id after failed restore)
+    if (currentChatId && lastLoadedChatIdRef.current === currentChatId) {
       const list = chatList ?? (await utils.chat.list.fetch()).map((c: any) => ({ id: c.id }));
       const exists = Array.isArray(list) && list.some((c: any) => c.id === currentChatId);
       if (exists) return currentChatId;
-      setCurrentChatId(null);
-      try { localStorage.removeItem("pc_current_chat"); } catch {}
     }
+    setCurrentChatId(null);
+    lastLoadedChatIdRef.current = null;
+    try { localStorage.removeItem("pc_current_chat"); } catch {}
     const title = (firstLineForTitle ?? "").slice(0, 40) || "New chat";
     const created = await createChat.mutateAsync({ title });
     setCurrentChatId(created.id);
+    lastLoadedChatIdRef.current = created.id;
     try { localStorage.setItem("pc_current_chat", created.id); } catch {}
     return created.id;
   }, [currentChatId, createChat, chatList, utils.chat.list]);
@@ -434,6 +499,7 @@ export default function ChatClient({ user }: ChatClientProps) {
     try {
       await appendMessages.mutateAsync({ chatId, messages: [{ id: userMsg.id, role: userMsg.role, content: userMsg.content }], cap: 50 });
     } catch (e) {
+      console.error('Failed to save user message:', e);
       // Keep UI responsive even if DB append fails
     }
     setLoading(true);
@@ -479,7 +545,11 @@ export default function ChatClient({ user }: ChatClientProps) {
               } else if (obj.done) {
                 // persist using accumulated buffer to avoid stale closure
                 const finalContent = assistantContentBuffer;
-                try { await appendMessages.mutateAsync({ chatId, messages: [{ id: assistantId, role: 'assistant', content: finalContent }], cap: 50 }); } catch {}
+                try { 
+                  await appendMessages.mutateAsync({ chatId, messages: [{ id: assistantId, role: 'assistant', content: finalContent }], cap: 50 }); 
+                } catch (e) { 
+                  console.error('Failed to save streaming assistant message:', e); 
+                }
               } else if (obj.error) {
                 const errMsg = obj.error as string;
                 // Surface error inside the assistant placeholder instead of blank output
@@ -518,7 +588,11 @@ export default function ChatClient({ user }: ChatClientProps) {
         if (!res.ok) throw new Error(data?.error ?? 'Request failed');
         const assistantMsg: MessageItem = { id: crypto.randomUUID(), role: 'assistant', content: data.output as string };
         setMessages(m => { const next = [...m, assistantMsg]; return next.slice(Math.max(0, next.length - 50)); });
-        try { await appendMessages.mutateAsync({ chatId, messages: [{ id: assistantMsg.id, role: assistantMsg.role, content: assistantMsg.content }], cap: 50 }); } catch {}
+        try { 
+          await appendMessages.mutateAsync({ chatId, messages: [{ id: assistantMsg.id, role: assistantMsg.role, content: assistantMsg.content }], cap: 50 }); 
+        } catch (e) { 
+          console.error('Failed to save non-streaming assistant message:', e); 
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -534,24 +608,58 @@ export default function ChatClient({ user }: ChatClientProps) {
     }
   };
 
+  const [loadingChatId, setLoadingChatId] = useState<string | null>(null);
+  const lastLoadedChatIdRef = useRef<string | null>(null);
   const selectChat = useCallback(async (id: string) => {
-    setCurrentChatId(id);
+    setLoadingChatId(id);
     try {
+      if (!chatList) void utils.chat.list.invalidate();
       const data = await utils.chat.get.fetch({ chatId: id, limit: 50 });
-      const loaded: MessageItem[] = data.messages.map((m: { id: string; role: string; content: string }) => ({ id: m.id, role: m.role as any, content: m.content }));
+      const loaded: MessageItem[] = data.messages.map((m: { id: string; role: string; content: string; userFeedback?: 'like' | 'dislike' }) => ({ id: m.id, role: m.role as any, content: m.content, userFeedback: m.userFeedback }));
       setMessages(loaded);
-      setInput("");
-      try { localStorage.setItem("pc_current_chat", id); } catch {}
-      // Scroll to bottom after hydration
-      requestAnimationFrame(() => responseEndRef.current?.scrollIntoView({ behavior: "smooth" }));
+      setCurrentChatId(id);
+      lastLoadedChatIdRef.current = id;
+      setInput('');
+      try { localStorage.setItem('pc_current_chat', id); } catch {}
+      requestAnimationFrame(() => responseEndRef.current?.scrollIntoView({ behavior: 'smooth' }));
     } catch (err) {
-      // Swallow errors from invalid chat id to avoid noisy query errors
-      console.warn("Failed to load chat; clearing selection", err);
-      setMessages([]);
-      setCurrentChatId(null);
-      try { localStorage.removeItem("pc_current_chat"); } catch {}
+      console.warn('Failed to load chat', err);
+      // show minimal inline error
+      setError('Failed to load chat');
+      if (currentChatId === id) {
+        setCurrentChatId(null);
+        lastLoadedChatIdRef.current = null;
+      }
+    } finally {
+      setLoadingChatId(null);
     }
-  }, [utils.chat.get]);
+  }, [chatList, utils.chat.get, utils.chat.list, currentChatId]);
+
+  // When chat list loads, attempt to load last opened chat exactly once
+  useEffect(() => {
+    if (restoredLastChatRef.current) return;
+    if (!chatList) return;
+    if (currentChatId) { restoredLastChatRef.current = true; return; }
+    const target = initialChatIdRef.current;
+    if (target && (chatList as any[]).some(c => c.id === target)) {
+      restoredLastChatRef.current = true;
+      void selectChat(target);
+    } else {
+      if (target) {
+        try { localStorage.removeItem('pc_current_chat'); } catch {}
+      }
+      restoredLastChatRef.current = true;
+    }
+  }, [chatList, currentChatId, selectChat]);
+
+  // Retry loading currentChatId if messages are still empty and we haven't succeeded yet (guarded)
+  useEffect(() => {
+    if (!currentChatId) return;
+    if (messages.length > 0) return;
+    // only retry for a short window after selection
+    const t = setTimeout(() => { void selectChat(currentChatId); }, 100);
+    return () => clearTimeout(t);
+  }, [currentChatId, messages.length, selectChat]);
 
   const deleteChat = useCallback(async (id: string) => {
     try {
@@ -580,7 +688,7 @@ export default function ChatClient({ user }: ChatClientProps) {
 
   return (
     <div className="relative flex h-svh w-full overflow-hidden">
-      {/* Sidebar backdrop (mobile only) */}
+    {/* Sidebar backdrop (mobile only) */}
       <div
         className={cn(
           "fixed inset-0 z-30 bg-black/50 transition-opacity md:hidden",
@@ -592,15 +700,17 @@ export default function ChatClient({ user }: ChatClientProps) {
       {/* Sidebar */}
       <div
         className={cn(
-          // Mobile: slide-over; Desktop: sticky column
-          "fixed inset-y-0 left-0 z-40 w-80 -translate-x-full transform transition-transform duration-200 md:sticky md:top-0 md:h-svh md:inset-auto md:transform-none md:transition-[width] md:duration-200 md:shrink-0 md:overflow-y-auto",
-          sidebarOpen ? "translate-x-0 md:w-80 md:pointer-events-auto" : "-translate-x-full md:w-0 md:overflow-hidden md:pointer-events-none"
+      // Mobile: slide-over controlled by state; Desktop: always visible static column
+      "fixed inset-y-0 left-0 z-40 w-80 -translate-x-full transform transition-transform duration-200 md:sticky md:top-0 md:h-svh md:inset-auto md:transform-none md:shrink-0 md:overflow-y-auto",
+      sidebarOpen ? "translate-x-0" : "-translate-x-full",
+      // Ensure always visible on desktop regardless of state
+      "md:translate-x-0"
         )}
       >
-        <FiltersSidebar
+  <FiltersSidebar
           user={user}
-          onClose={() => setSidebarOpen(false)}
-          openTutorial={() => setHelpOpen(true)}
+          // Close handler only relevant for mobile; ignored on desktop
+          onClose={() => { if (typeof window !== 'undefined' && !window.matchMedia('(min-width: 768px)').matches) setSidebarOpen(false); }}
           openAccount={() => setAccountOpen(true)}
           openInfo={() => setInfoOpen(true)}
           presets={presets}
@@ -647,9 +757,10 @@ export default function ChatClient({ user }: ChatClientProps) {
       <div className="flex flex-1 min-h-0 flex-col">
         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-gray-800 bg-gray-900/80 px-4 py-3 backdrop-blur">
           <div className="flex items-center gap-3">
+            {/* Mobile toggle button only */}
             <button
               type="button"
-              className="rounded-md border border-gray-700 px-2 py-1 text-sm text-gray-200 transition hover:border-blue-500 hover:text-white"
+              className="md:hidden rounded-md border border-gray-700 px-2 py-1 text-sm text-gray-200 transition hover:border-blue-500 hover:text-white"
               onClick={() => setSidebarOpen((v) => !v)}
               aria-label="Open filters sidebar"
               title="Toggle sidebar"
@@ -658,7 +769,7 @@ export default function ChatClient({ user }: ChatClientProps) {
             </button>
             <div className="flex items-center text-lg font-semibold text-blue-400">
               <Image src="/icon.png" alt="PromptCrafter icon" width={20} height={20} className="w-4 h-4 mr-2" priority />
-              PromptCrafter
+              PromptCrafter{modelDisplay && <span className="ml-2 text-sm font-normal text-gray-400">- {modelDisplay}</span>}
             </div>
           </div>
         </div>
@@ -730,6 +841,17 @@ export default function ChatClient({ user }: ChatClientProps) {
                             </svg>
                           )}
                         </button>
+                        {!isUser && (
+                          <div className="mt-3 -mb-1 border-t border-white/5 pt-2">
+                            <MessageFeedback
+                              messageId={m.id}
+                              initialFeedback={m.userFeedback ?? null}
+                              onChange={(fb) => {
+                                setMessages(prev => prev.map(msg => msg.id === m.id ? { ...msg, userFeedback: fb ?? undefined } : msg));
+                              }}
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -814,67 +936,29 @@ export default function ChatClient({ user }: ChatClientProps) {
           </div>
         </div>
 
-        {(helpOpen || accountOpen || infoOpen) && (
+        {(accountOpen || infoOpen) && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center"
             aria-modal="true"
             role="dialog"
-            aria-label={helpOpen ? "How to use PromptCrafter" : infoOpen ? "Prompt settings info" : "Saved Data"}
+            aria-label={infoOpen ? "Prompt settings info" : "Saved Data"}
           >
-            <div className="absolute inset-0 bg-black/60" onClick={() => { setHelpOpen(false); setAccountOpen(false); setInfoOpen(false); }} />
+            <div className="absolute inset-0 bg-black/60" onClick={() => { setAccountOpen(false); setInfoOpen(false); }} />
             <div
               className="relative z-10 w-[92vw] max-w-xl rounded-xl border border-white/10 bg-gray-900 p-5 text-gray-100 shadow-2xl max-h-[85vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
               <button
                 type="button"
-                onClick={() => { setHelpOpen(false); setAccountOpen(false); setInfoOpen(false); }}
+                onClick={() => { setAccountOpen(false); setInfoOpen(false); }}
                 className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-700 text-gray-300 transition hover:border-red-500 hover:text-white"
                 aria-label="Close help"
                 title="Close"
               >
                 <Icon name="close" />
               </button>
-              <div className="mb-3 text-lg font-semibold">{helpOpen ? "Tutorial" : infoOpen ? "Prompt Settings Info" : "Saved Data"}</div>
-              {helpOpen ? (
-              <div className="space-y-4 text-sm">
-                <div className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-800/40 p-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600/20 text-indigo-300"><Icon name="comments" /></div>
-                  <div className="flex-1">
-                    <div className="font-medium">Chat Basics</div>
-                    <ul className="mt-1 list-disc space-y-1 pl-5 text-gray-300">
-                      <li>Type your message and click <span className="rounded border border-white/20 px-1 py-0.5">Send</span> or press <span className="rounded border border-white/20 px-1 py-0.5">Enter</span>. Use <span className="rounded border border-white/20 px-1 py-0.5">Shift</span> + <span className="rounded border border-white/20 px-1 py-0.5">Enter</span> for a new line.</li>
-                      <li>Use the preset selector near the input (mobile: above, desktop: left of the input) to quickly apply saved settings. Defaults show as <em>(Default)</em>.</li>
-                      <li>Click <span className="rounded border border-white/20 px-1 py-0.5"><Icon name="info" className="inline" /> Info</span> above <em>Preset Name</em> to learn what each setting does.</li>
-                      <li>Code/JSON/Markdown blocks render with a copy button; copying excludes the triple backticks.</li>
-                    </ul>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-800/40 p-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-600/20 text-emerald-300"><Icon name="tools" /></div>
-                  <div className="flex-1">
-                    <div className="font-medium">Prompt Settings & Presets</div>
-                    <ul className="mt-1 list-disc space-y-1 pl-5 text-gray-300">
-                      <li><strong>Preset Name</strong> is editable in the settings grid. Change it and click <em>Update</em> to rename the selected preset.</li>
-                      <li><strong>Add New Preset</strong> resets to app defaults so you can create a fresh preset. <strong>Duplicate Preset</strong> switches to Add mode pre-filled from the selected preset (with <em>(copy)</em> appended).</li>
-                      <li><strong>Update</strong> enables when any field or the name changes. <strong>Delete</strong> asks for confirmation.</li>
-                      <li><strong>Set as default</strong> marks the selected preset as default. On load, your default (or the first preset) is auto-selected.</li>
-                      <li><strong>Type-specific options</strong> appear based on <em>Type</em> (e.g., Coding: <em>Include tests</em>; Image: <em>Image Style</em> and <em>Aspect Ratio</em>; Research: <em>Require citations</em>).</li>
-                    </ul>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-800/40 p-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600/20 text-blue-300"><Icon name="scroll" /></div>
-                  <div className="flex-1">
-                    <div className="font-medium">Chats</div>
-                    <ul className="mt-1 list-disc space-y-1 pl-5 text-gray-300">
-                      <li>Your chat history is in the Chats tab. Click a chat to reopen it; use the <span className="rounded border border-white/20 px-1 py-0.5">Select</span> mode to export and delete chats.</li>
-                      <li>Click the <span className="rounded border border-white/20 px-1 py-0.5">+</span> button next to Send to start fresh.</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-              ) : infoOpen ? (
+              <div className="mb-3 text-lg font-semibold">{infoOpen ? "Prompt Settings Info" : "Saved Data"}</div>
+              {infoOpen ? (
                 <div className="space-y-4 text-sm">
                   <div className="rounded-lg border border-gray-800 bg-gray-800/40 p-3">
                     <div className="font-medium">Preset Name</div>

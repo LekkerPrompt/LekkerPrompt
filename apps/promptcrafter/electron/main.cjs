@@ -40,18 +40,16 @@ if (cfg.dataDir) {
   dataDirPath = cfg.dataDir;
   // Ensure directory exists
   try { fs.mkdirSync(dataDirPath, { recursive: true }); } catch (e) { /* ignore */ }
-  // Set DATABASE_URL so backend uses chosen directory (db.ts fallback will respect this)
-  process.env.DATABASE_URL = `file:${path.join(dataDirPath, 'electron.db')}`;
+  // Set DATA_DIR so backend uses chosen directory for JSON/vector storage
+  process.env.DATA_DIR = dataDirPath;
 }
-// If no dataDir is configured, we'll prompt the user before setting DATABASE_URL
-// In packaged production builds, failing to set a DB path early can cause server init errors
-// if any imported module touches the DB immediately. Provide a safe fallback.
+// If no dataDir is configured, we'll prompt the user before setting DATA_DIR
 if (!isDev && !dataDirPath) {
   try {
     const fallback = path.join(app.getPath('userData'), 'data');
     fs.mkdirSync(fallback, { recursive: true });
     dataDirPath = fallback;
-    process.env.DATABASE_URL = `file:${path.join(dataDirPath, 'electron.db')}`;
+    process.env.DATA_DIR = dataDirPath;
     console.log('[Electron] No persisted dataDir. Using fallback at', fallback);
   } catch (e) {
     console.warn('[Electron] Failed to create fallback data directory', e);
@@ -97,22 +95,33 @@ ipcMain.handle('promptcrafter:isDbConfigured', () => {
 });
 ipcMain.handle('promptcrafter:getDbInfo', () => {
   try {
-    if (!dataDirPath) return { ok: false, error: 'Database location not configured' };
-    const dbPath = path.join(dataDirPath, 'electron.db');
+    if (!dataDirPath) return { ok: false, error: 'Data directory not configured' };
+    // Compute aggregate size of JSON/vector files for approximation
     let sizeBytes = 0;
-    if (fs.existsSync(dbPath)) {
-      const stat = fs.statSync(dbPath);
-      sizeBytes = stat.size;
-    }
-    return { ok: true, dataDir: dataDirPath, dbPath, sizeBytes, writable: canWriteToDir(dataDirPath) };
+    try {
+      const entries = fs.readdirSync(dataDirPath);
+      for (const f of entries) {
+        if (/\.json$/i.test(f) || /-vectors\.json$/i.test(f)) {
+          const full = path.join(dataDirPath, f);
+            try { const st = fs.statSync(full); if (st.isFile()) sizeBytes += st.size; } catch(_) {}
+        }
+      }
+    } catch(_) {}
+    // Provide representative data file path (first json file or directory marker)
+    let representative = null;
+    try {
+      const files = fs.readdirSync(dataDirPath).filter(f => f.endsWith('.json'));
+      representative = files[0] ? path.join(dataDirPath, files[0]) : dataDirPath;
+    } catch(_) { representative = dataDirPath; }
+    return { ok: true, dataDir: dataDirPath, dbPath: representative, sizeBytes, writable: canWriteToDir(dataDirPath) };
   } catch (e) {
-    return { ok: false, error: e?.message || 'Failed to read DB info' };
+    return { ok: false, error: e?.message || 'Failed to read data directory info' };
   }
 });
 // Reset DB configuration: allow user to pick a new directory and optionally rebuild DB file
 ipcMain.handle('promptcrafter:resetDataDir', async () => {
   try {
-    const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'], title: 'Select new database directory' });
+  const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'], title: 'Select new data directory' });
     if (result.canceled || !result.filePaths?.[0]) return { ok: false, cancelled: true };
     const selected = result.filePaths[0];
     try { fs.mkdirSync(selected, { recursive: true }); } catch (_) {}
@@ -124,20 +133,12 @@ ipcMain.handle('promptcrafter:resetDataDir', async () => {
     cfg2.dataDir = selected;
     saveConfig(cfg2);
     dataDirPath = selected;
-    const dbFile = path.join(dataDirPath, 'electron.db');
-    // If an existing DB file exists at old location, we leave it in place (user can migrate manually)
-    // If a DB file exists at new location and user wants a clean reset, rename it with timestamp
-    if (fs.existsSync(dbFile)) {
-      try {
-        const backup = dbFile.replace(/\.db$/i, '.backup-' + Date.now() + '.db');
-        fs.renameSync(dbFile, backup);
-      } catch (e) { /* ignore rename issues */ }
-    }
-    // Point process env at new DB path BEFORE any new prisma initialization
-    process.env.DATABASE_URL = `file:${dbFile}`;
-    // Lazily created schema (ensureSqliteSchema) will run on next API call; we just touch file to confirm writability
-    try { fs.writeFileSync(dbFile, ''); } catch (_) {}
-    return { ok: true, dataDir: dataDirPath, dbPath: dbFile, note: 'Restart may be required for running Prisma client to use new path.' };
+  // No single DB file now; JSON & vector stores will populate lazily.
+    // Point process env at new data directory path
+    process.env.DATA_DIR = dataDirPath;
+    // Create data directory to confirm writability
+    try { fs.mkdirSync(dataDirPath, { recursive: true }); } catch (_) {}
+    return { ok: true, dataDir: dataDirPath, dbPath: dataDirPath, note: 'Data directory updated successfully.' };
   } catch (e) {
     return { ok: false, error: e?.message || 'Reset failed' };
   }
@@ -165,7 +166,7 @@ ipcMain.handle('promptcrafter:chooseDataDir', async () => {
   cfg2.dataDir = selected;
   saveConfig(cfg2);
   dataDirPath = selected;
-  process.env.DATABASE_URL = `file:${path.join(dataDirPath, 'electron.db')}`;
+  // Legacy DATABASE_URL removed; storage now uses DATA_DIR environment variable only.
   return { ok: true, dataDir: dataDirPath };
 });
 ipcMain.handle('promptcrafter:getEnvSafety', () => {

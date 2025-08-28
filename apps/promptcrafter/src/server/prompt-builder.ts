@@ -1,7 +1,8 @@
-import { readSystemPromptForModeFromDb } from '@/server/settings';
+import { readSystemPromptForMode } from '@/server/settings';
 import { env } from '@/env';
 import type { PromptMode, TaskType, GenerationOptions } from '@/server/googleai';
 import { buildStylePresetPhrase } from '@/server/image-style-presets';
+import { dataLayer } from '@/server/storage/data-layer';
 
 const TYPE_GUIDELINES: Record<TaskType, string> = {
   general: '',
@@ -139,7 +140,7 @@ export async function buildUnifiedPrompt({ input, mode, taskType, options }: Bui
     return 'User input rejected: Input appears too brief or conversational. Please describe what kind of prompt you want created or provide content to enhance.';
   }
 
-  const perModePrompt = await readSystemPromptForModeFromDb(mode);
+  const perModePrompt = await readSystemPromptForMode(mode);
   const envFallback = mode === 'build' ? env.GOOGLE_SYSTEM_PROMPT_BUILD : env.GOOGLE_SYSTEM_PROMPT_ENHANCE;
   const systemPrompt = perModePrompt ?? envFallback ?? env.GOOGLE_SYSTEM_PROMPT ?? '';
 
@@ -224,11 +225,46 @@ export async function buildUnifiedPrompt({ input, mode, taskType, options }: Bui
       ].join(' ')
   : 'Return only the final prompt text. No headings like "Instruction:" unless user input already contained them. Do not output JSON objects, code fences, or markdown image/link syntax unless the user explicitly asked for that format in the Format semantics.';
 
+  // ALWAYS apply RAG context (universal across local + API models)
+  let ragContextBlock: string | null = null;
+  try {
+    const rag = await dataLayer.getRagContext(rawUserInput, { similarLimit: 5, personalizationLimit: 5 });
+    const personalized = rag.personalized;
+    const similar = rag.similar;
+
+    if (personalized.length || similar.length) {
+      const lines: string[] = [];
+      if (personalized.length) {
+        lines.push('Personalization Signals (derived ONLY from explicitly liked/disliked past responses; neutral messages excluded):');
+        personalized.slice(0, 5).forEach(p => {
+          const tag = p.feedback === 'like' ? 'LIKE' : 'DISLIKE';
+          // trim content for brevity
+          const truncated = p.content.length > 180 ? p.content.slice(0, 177) + '...' : p.content;
+          lines.push(`- (${tag}) [Relevance ${(p.score * 100).toFixed(1)}%] ${truncated}`);
+        });
+      }
+      if (similar.length) {
+        lines.push('Contextually Similar Messages (may include neutral messages; DO NOT learn preferences from neutral, use only for factual/contextual grounding):');
+        similar.slice(0, 5).forEach(s => {
+          const fb = s.feedback ? (s.feedback === 'like' ? 'LIKE' : 'DISLIKE') : 'NEUTRAL';
+          const truncated = s.content.length > 160 ? s.content.slice(0, 157) + '...' : s.content;
+          lines.push(`- (${fb}) ${truncated}`);
+        });
+      }
+      lines.push('Usage Rules: Incorporate stylistic / preference cues ONLY from items tagged LIKE or DISLIKE (treat DISLIKE as negative preference to avoid). Never assume preference from NEUTRAL.');
+      ragContextBlock = `RAG Context (Universal):\n${lines.join('\n')}`;
+    }
+  } catch (e) {
+    ragContextBlock = null; // Fail silent – do not block prompt creation
+  }
+
+
   return [
     systemPrompt ? `System Instructions:\n${systemPrompt}` : null,
     MODE_GUIDELINES[mode] ? `Mode Guidelines:\n${MODE_GUIDELINES[mode]}` : null,
     typeGuidelines ? `Task Type Guidelines:\n${typeGuidelines}` : null,
     optionLines.length ? `Constraints:\n- ${optionLines.join('\n- ')}` : null,
+    ragContextBlock,
   semanticsBlock,
   `User Input Raw:\n${rawUserInput}`,
   'Output Contract:\n- For JSON format: Provide valid JSON without code fences.\n- For Markdown format: Use proper markdown structure with headings, lists, and formatting.\n- For Plain format: Provide clean text without markdown syntax.\n- Never ask clarifying questions, instead infer reasonable defaults.',

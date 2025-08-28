@@ -3,10 +3,7 @@ import { env } from "@/env";
 import { z } from "zod";
 
 import { auth } from "@/server/auth";
-import {
-  readSystemPromptForModeFromDb,
-  writeSystemPromptForModeToDb,
-} from "@/server/settings";
+import { readSystemPromptForMode, writeSystemPromptForMode } from "@/server/settings";
 
 // Electron-only: all local users are treated as admin.
 function isAdmin(): boolean { return true; }
@@ -16,8 +13,8 @@ export async function GET() {
   if (!session?.user || !isAdmin()) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const build = (await readSystemPromptForModeFromDb("build")) ?? env.GOOGLE_SYSTEM_PROMPT_BUILD ?? env.GOOGLE_SYSTEM_PROMPT ?? "";
-  const enhance = (await readSystemPromptForModeFromDb("enhance")) ?? env.GOOGLE_SYSTEM_PROMPT_ENHANCE ?? env.GOOGLE_SYSTEM_PROMPT ?? "";
+  const build = (await readSystemPromptForMode("build")) ?? env.GOOGLE_SYSTEM_PROMPT_BUILD ?? env.GOOGLE_SYSTEM_PROMPT ?? "";
+  const enhance = (await readSystemPromptForMode("enhance")) ?? env.GOOGLE_SYSTEM_PROMPT_ENHANCE ?? env.GOOGLE_SYSTEM_PROMPT ?? "";
   return NextResponse.json({ build, enhance });
 }
 
@@ -38,10 +35,10 @@ export async function PUT(req: Request) {
     return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
   }
   if (parsed.build !== undefined) {
-    await writeSystemPromptForModeToDb("build", parsed.build);
+  await writeSystemPromptForMode("build", parsed.build);
   }
   if (parsed.enhance !== undefined) {
-    await writeSystemPromptForModeToDb("enhance", parsed.enhance);
+  await writeSystemPromptForMode("enhance", parsed.enhance);
   }
   return NextResponse.json({ ok: true });
 }

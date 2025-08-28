@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import { readLocalModelConfig } from "@/server/local-model";
-import { ensureDbReady } from "@/server/db";
 
 export async function GET(request: Request) {
   try {
-    await ensureDbReady();
     const { searchParams } = new URL(request.url);
     const customBaseUrl = searchParams.get('baseUrl');
     

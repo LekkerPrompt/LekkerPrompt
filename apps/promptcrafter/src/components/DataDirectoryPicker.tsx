@@ -15,15 +15,12 @@ declare global {
   }
 }
 
-export const DbLocationModalWrapper: React.FC = () => {
+export const DataDirectoryModal: React.FC = () => {
   const [open, setOpen] = React.useState(false);
   const [dir, setDir] = React.useState<string>("");
-  const [dbPath, setDbPath] = React.useState<string>("");
-  const [sizeBytes, setSizeBytes] = React.useState<number>(0);
+  const [dataFilePath, setDataFilePath] = React.useState<string>("");
+  const [approxSizeBytes, setApproxSizeBytes] = React.useState<number>(0);
   const [error, setError] = React.useState<string>("");
-  const [serverDbPath, setServerDbPath] = React.useState<string>("");
-  const [serverDbSize, setServerDbSize] = React.useState<number>(0);
-  const [serverExists, setServerExists] = React.useState<boolean>(false);
   const [pending, setPending] = React.useState(false);
 
   React.useEffect(() => {
@@ -40,21 +37,11 @@ export const DbLocationModalWrapper: React.FC = () => {
       const info = await window.promptcrafter?.getDbInfo?.();
       if (info?.ok) {
         setDir(info.dataDir || '');
-        setDbPath(info.dbPath || '');
-        setSizeBytes(info.sizeBytes || 0);
+        setDataFilePath(info.dbPath || '');
+        setApproxSizeBytes(info.sizeBytes || 0);
       } else if (info?.dataDir) {
         setDir(info.dataDir);
       }
-      // fetch server-side actual DATABASE_URL resolution
-      try {
-        const res = await fetch('/api/admin/db-info');
-        if (res.ok) {
-          const json = await res.json();
-          if (json.activeDbFile) setServerDbPath(json.activeDbFile);
-          if (typeof json.activeDbSizeBytes === 'number') setServerDbSize(json.activeDbSizeBytes);
-          setServerExists(!!json.activeDbExists);
-        }
-      } catch { /* ignore */ }
     } catch (e:any) { /* ignore */ }
   }, [isElectron]);
 
@@ -93,15 +80,14 @@ export const DbLocationModalWrapper: React.FC = () => {
     return out.trim();
   }, []);
 
-  const mismatch = !!(serverDbPath && dbPath && normalizePath(serverDbPath) !== normalizePath(dbPath));
-  const serverExistsNormalized = serverExists; // semantic alias
+  // Legacy mismatch logic removed (single data directory now)
 
   return open ? (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
       <div className="relative z-10 w-[92vw] max-w-lg rounded-xl border border-white/10 bg-gray-900 p-5 text-gray-100 shadow-2xl max-h-[85vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">Database Location</h2>
+          <h2 className="text-lg font-semibold">Data Directory</h2>
           <button onClick={() => setOpen(false)} className="rounded-md border border-gray-600 bg-gray-800 px-2 py-1 text-xs">Close</button>
         </div>
         <div className="space-y-4 text-sm">
@@ -111,34 +97,16 @@ export const DbLocationModalWrapper: React.FC = () => {
           </div>
           <div className="grid grid-cols-2 gap-4 text-xs">
             <div>
-              <div className="text-gray-400 uppercase tracking-wide mb-1">Configured (Electron)</div>
-              <div className="break-all">{dbPath || 'electron.db (pending)'}</div>
+              <div className="text-gray-400 uppercase tracking-wide mb-1">Data File (Primary)</div>
+              <div className="break-all">{dataFilePath || 'Pending'}</div>
             </div>
             <div>
-              <div className="text-gray-400 uppercase tracking-wide mb-1">Configured Size</div>
-              <div>{sizeBytes ? `${(sizeBytes/1024).toFixed(1)} KB` : '0 KB'}</div>
-            </div>
-            <div>
-              <div className="text-gray-400 uppercase tracking-wide mb-1">Active (Server)</div>
-              <div className="break-all">{serverDbPath || 'Unknown'}</div>
-            </div>
-            <div>
-              <div className="text-gray-400 uppercase tracking-wide mb-1">Active Size</div>
-              <div>{serverDbSize ? `${(serverDbSize/1024).toFixed(1)} KB` : '0 KB'}</div>
+              <div className="text-gray-400 uppercase tracking-wide mb-1">Approx Size</div>
+              <div>{approxSizeBytes ? `${(approxSizeBytes/1024).toFixed(1)} KB` : '0 KB'}</div>
             </div>
           </div>
-          {mismatch && (
-            <div className="rounded border border-amber-500/40 bg-amber-900/30 px-3 py-2 text-[11px] text-amber-200">
-              Mismatch detected: Electron configured directory differs from server active DB file. The app may have been started before a directory change. Restart Electron to apply or migrate data manually.
-            </div>
-          )}
-          {(!serverExistsNormalized && serverDbPath) && (
-            <div className="rounded border border-red-500/40 bg-red-900/30 px-3 py-2 text-[11px] text-red-200">
-              Active DB file not found yet. It will be created on first write. If data appears in the UI, writes may be pointed at a different path. Verify permissions.
-            </div>
-          )}
           <p className="text-xs leading-relaxed text-gray-300">
-            This SQLite database stores chats, presets, and system prompt overrides locally. Changing the directory updates where new reads/writes occur. Existing data is <strong>not automatically migrated</strong>—manually move the database file if you want to retain prior content.
+            This directory stores your local JSON data and vector index (for RAG, chats, presets, feedback). You can relocate it at any time. Existing data is <strong>not automatically migrated</strong>—manually move the folder if you want to retain prior content.
           </p>
           {error && <div className="rounded border border-red-500/40 bg-red-900/30 px-3 py-2 text-xs text-red-300">{error}</div>}
           <div className="flex items-center gap-2 flex-wrap">
@@ -153,4 +121,4 @@ export const DbLocationModalWrapper: React.FC = () => {
   ) : null;
 };
 
-export default DbLocationModalWrapper;
+export default DataDirectoryModal;

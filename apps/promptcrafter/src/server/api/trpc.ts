@@ -12,7 +12,7 @@ import superjson from "superjson";
 import { ZodError } from "zod";
 
 import { auth } from "@/server/auth";
-import { db, ensureDbReady } from "@/server/db";
+import { dataLayer } from "@/server/storage/data-layer";
 
 /**
  * 1. CONTEXT
@@ -28,9 +28,9 @@ import { db, ensureDbReady } from "@/server/db";
  */
 export const createTRPCContext = async (opts: { headers: Headers }) => {
 	const session = await auth();
-	// Ensure electron sqlite client fully initialized when in electron mode
-	const readyDb = await ensureDbReady();
-	return { db: readyDb, session, ...opts };
+	// Ensure local user exists
+	await dataLayer.ensureLocalUser();
+	return { db: dataLayer, storage: dataLayer, session, ...opts };
 };
 
 /**

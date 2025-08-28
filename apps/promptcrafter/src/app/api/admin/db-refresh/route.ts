@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { env } from "@/env";
 
-// This endpoint forces a refresh of the database connection after DATABASE_URL changes
+// This endpoint forces a refresh of the data layer after DATA_DIR changes
 export async function POST() {
   try {
     // Check if we're in Electron
@@ -11,35 +11,30 @@ export async function POST() {
       return NextResponse.json({ ok: false, error: "Only available in Electron mode" }, { status: 400 });
     }
 
-    // Check if DATABASE_URL is now configured
-    if (!process.env.DATABASE_URL || !process.env.DATABASE_URL.startsWith('file:')) {
-      return NextResponse.json({ ok: false, error: "DATABASE_URL not configured" }, { status: 400 });
+    // Check if DATA_DIR is now configured
+    if (!process.env.DATA_DIR) {
+      return NextResponse.json({ ok: false, error: "DATA_DIR not configured" }, { status: 400 });
     }
 
-    // Clear any existing Prisma instance to force re-initialization
+    // Clear any existing data layer cache to force re-initialization
     const globalAny = globalThis as any;
-    if (globalAny.__electronPrisma) {
-      try {
-        await globalAny.__electronPrisma.$disconnect();
-      } catch (e) {
-        console.warn('Error disconnecting previous Prisma instance:', e);
-      }
-      globalAny.__electronPrisma = null;
+    if (globalAny.__dataLayerCache) {
+      globalAny.__dataLayerCache = null;
     }
 
-    // Force re-initialization by importing db module fresh
-    delete require.cache[require.resolve("@/server/db")];
-    const { ensureDbReady } = require("@/server/db");
+    // Force re-initialization by importing data layer module fresh
+    delete require.cache[require.resolve("@/server/storage/data-layer")];
+    const { dataLayer } = require("@/server/storage/data-layer");
     
-    // Initialize the new database connection
-    await ensureDbReady();
+    // Initialize the data layer with local user
+    await dataLayer.ensureLocalUser();
     
-    return NextResponse.json({ ok: true, message: "Database connection refreshed" });
+    return NextResponse.json({ ok: true, message: "Data layer connection refreshed" });
   } catch (error: any) {
-    console.error("Failed to refresh database connection:", error);
+    console.error("Failed to refresh data layer connection:", error);
     return NextResponse.json({ 
       ok: false, 
-      error: error?.message || "Failed to refresh database connection" 
+      error: error?.message || "Failed to refresh data layer connection" 
     }, { status: 500 });
   }
 }

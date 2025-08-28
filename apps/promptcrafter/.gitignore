@@ -8,11 +8,6 @@
 # testing
 /coverage
 
-# database
-/prisma/db.sqlite
-/prisma/db.sqlite-journal
-db.sqlite
-
 # next.js
 /.next/
 /out/
@@ -45,9 +40,6 @@ yarn-error.log*
 
 # idea files
 .idea
-
-# Prisma engine temp files
-query_engine-*.tmp*
 
 # --- Electron / Packager & Builder Outputs ---
 /dist
@@ -110,11 +102,5 @@ Chrome DevTools Extensions
 /app/build
 /app/out
 
-# If you don't want to commit generated Prisma electron client bundle
-src/server/generated/electron/
-
 # all log files
 **.log
-
-# dev DB
-prisma/electron.db

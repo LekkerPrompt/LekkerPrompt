@@ -14,7 +14,7 @@
 
 # PromptCrafter (Electron + Next.js)
 
-PromptCrafter lets you <em>build</em> new prompts or <em>enhance</em> existing text using task‑specific and style controls. It stores your chats, presets, and system prompts locally (SQLite) inside a directory you choose on first run of the packaged Electron app.
+PromptCrafter lets you <em>build</em> new prompts or <em>enhance</em> existing text using task‑specific and style controls. It stores your chats, presets, system prompts, and retrieval vectors locally as plain JSON files inside a directory you choose on first run of the packaged Electron app.
 
 The same codebase runs in two modes:
 
@@ -30,7 +30,7 @@ The same codebase runs in two modes:
 - Options: tone, detail level, output format, language, temperature
 - Presets: create, edit, delete, set default
 - Chat history: persisted; reopen & continue
-- System prompts: per-mode overrides, stored in DB (fallback chain: DB > per-mode env > global env > internal fallback)
+- System prompts: per-mode overrides, stored locally (fallback chain: stored per-mode > global env > internal fallback)
 - Local model config (Ollama) or remote proxy (OpenRouter / Google AI endpoint)
 - Privacy consent gate for remote model usage
 - Electron niceties: spellcheck (en-US), custom context menu w/ suggestions, controlled window sizing
@@ -42,7 +42,7 @@ The same codebase runs in two modes:
 - Next.js
 - Electron
 - TypeScript
-- Prisma (Local SQLite db)
+- Local JSON stores (no SQL database)
 - tRPC + React Query
 - Tailwind CSS
 - Biome
@@ -51,14 +51,14 @@ The same codebase runs in two modes:
 
 ## Development Quick Start
 
-Prerequisites: Node >= 18.18 (recommended 20+). No database service required (SQLite file is generated automatically).
+Prerequisites: Node >= 18.18 (recommended 20+). No external database required.
 
 ```bash
 npm install
 npm run dev
 ```
 
-This runs a script that prepares the SQLite schema then launches Electron, which spawns the Next.js dev server. Choose a data directory when prompted; your `electron.db` will live there.
+This launches Electron (which spawns the Next.js dev server). Choose a data directory when prompted; your JSON state files and vector index will live there.
 
 ---
 
@@ -68,7 +68,7 @@ All server env vars are optional for local experimentation. Provide them to enab
 
 | Name | Description |
 |------|-------------|
-| DATABASE_URL | Normally set automatically by Electron after directory selection. |
+| DATA_DIR | Normally set automatically by Electron after directory selection (overrides default ./data). |
 | GOOGLE_API_KEY | API key for calling Google AI endpoints directly. |
 | GOOGLE_BASE_URL | Full model endpoint URL (e.g. https://.../models/gemma-2-...:generateContent). |
 | GOOGLE_PROXY_URL | Optional proxy endpoint if you don't want to bundle your key. |
@@ -84,7 +84,7 @@ Set `SKIP_ENV_VALIDATION=1` when experimenting; the dev/Electron scripts already
 
 ## Local & Remote Model Configuration
 
-Stored in `AppSetting` rows (`MODEL_PROVIDER`, `MODEL_BASE_URL`, `MODEL_NAME`). Two supported providers:
+Stored as local app settings (`MODEL_PROVIDER`, `MODEL_BASE_URL`, `MODEL_NAME`) in JSON. Two supported providers:
 
 1. `ollama`
    - `MODEL_BASE_URL`: e.g. `http://localhost:11434`
@@ -116,10 +116,10 @@ Internally these run `build:electron` then `electron-builder` (with asar packagi
 
 | Script | Purpose |
 |--------|---------|
-| dev | Prepare SQLite + launch Electron (Next.js dev) |
+| dev | Launch Electron (Next.js dev) |
 | build:electron | Build Next.js for production (no trace) |
 | dist:win / dist:electron | Package desktop app(s) |
-| db:push:electron | Push SQLite schema for Electron client |
+| (removed) | Former DB schema scripts removed – JSON storage now |
 | check / check:write | Biome lint/format |
 | typecheck | TypeScript type checking |
 
@@ -127,10 +127,7 @@ Internally these run `build:electron` then `electron-builder` (with asar packagi
 
 ## Data & Schema
 
-SQLite schema file: `prisma/schema.sqlite.prisma`.
-Generated client output: `src/server/generated/electron`.
-
-Models: `User`, `Account`, `Session`, `VerificationToken`, `Post`, `PromptPreset`, `Chat`, `ChatMessage`, `AppSetting`.
+Logical models: `User`, `Post`, `PromptPreset`, `Chat`, `ChatMessage`, `AppSetting` – all persisted as JSON documents + a lightweight vector store for semantic search & personalization.
 
 The `Account/Session` tables are present for structural similarity (auth flows may be trimmed in pure local mode).
 
@@ -145,7 +142,7 @@ The `Account/Session` tables are present for structural similarity (auth flows m
 - Model logic (Gemma / Google): `src/server/gemma.ts` & context helpers
 - Local/remote model bridge: `src/server/local-model.ts`
 - System prompts & settings: `src/server/settings.ts`
-- DB bootstrap: `src/server/db.ts`
+- Storage layer: `src/server/storage/*` (JSON + vector stores)
 
 ---
 

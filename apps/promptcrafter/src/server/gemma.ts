@@ -1,6 +1,6 @@
 import { env } from "@/env";
 import { buildGemmaContext, validateInput, getFallbackSystemPrompt } from "@/server/gemma-context";
-import { readSystemPromptForModeFromDb } from "@/server/settings";
+import { readSystemPromptForMode } from "@/server/settings";
 import type { PromptMode, TaskType, GenerationOptions, BuildPromptInput } from "@/server/gemma-context";
 
 export type { PromptMode, TaskType, GenerationOptions };
@@ -53,12 +53,12 @@ export async function callGemma({ input, mode, taskType, options }: GemmaChatInp
  */
 async function getSystemPrompt(mode: PromptMode): Promise<string> {
   try {
-    const dbPrompt = await readSystemPromptForModeFromDb(mode);
-    if (dbPrompt && dbPrompt.trim()) {
-      return dbPrompt.trim();
+    const storedPrompt = await readSystemPromptForMode(mode);
+    if (storedPrompt && storedPrompt.trim()) {
+      return storedPrompt.trim();
     }
   } catch (error) {
-    console.warn('Failed to read system prompt from DB:', error);
+    console.warn('Failed to read stored system prompt:', error);
   }
 
   // Fallback to environment or built-in

@@ -1,31 +1,18 @@
 import { NextResponse } from 'next/server';
-import path from 'node:path';
 import fs from 'node:fs';
+import path from 'node:path';
+import { resolveDataDir } from '@/server/storage/data-path';
 
+// Backward-compatible endpoint now reports JSON/vector data directory stats only.
 export async function GET() {
-  const url = process.env.DATABASE_URL || '';
-  let activeDbFile: string | null = null;
-  if (url.startsWith('file:')) {
-    const raw = url.slice('file:'.length);
-    // If path is relative, resolve relative to process.cwd()
-    activeDbFile = path.isAbsolute(raw) ? raw : path.join(process.cwd(), raw);
-  }
-  let activeDbExists = false;
-  let activeDbSizeBytes = 0;
-  if (activeDbFile) {
-    try {
-      if (fs.existsSync(activeDbFile)) {
-        activeDbExists = true;
-        activeDbSizeBytes = fs.statSync(activeDbFile).size;
+  const dataDir = resolveDataDir();
+  let sizeBytes = 0;
+  try {
+    for (const f of fs.readdirSync(dataDir)) {
+      if (f.endsWith('.json')) {
+        try { const st = fs.statSync(path.join(dataDir, f)); if (st.isFile()) sizeBytes += st.size; } catch {}
       }
-    } catch { /* ignore */ }
-  }
-  return NextResponse.json({
-    activeDatabaseUrl: url || null,
-    activeDbFile,
-    activeDbExists,
-    activeDbSizeBytes,
-    cwd: process.cwd(),
-    nodeEnv: process.env.NODE_ENV || null
-  });
+    }
+  } catch {}
+  return NextResponse.json({ dataDir, jsonApproxSizeBytes: sizeBytes });
 }

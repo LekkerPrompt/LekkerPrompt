@@ -34,7 +34,8 @@ const cfg = {
   referrer: process.env.OPENROUTER_REFERRER || '',
   siteName: process.env.OPENROUTER_SITE_NAME || '',
   proxyAuth: process.env.PROXY_AUTH_TOKEN || '',
-  timeoutMs: Number(process.env.REQUEST_TIMEOUT_MS || 15000),
+  // Request timeout (ms). Increased default from 15s to 90s to accommodate slower upstream responses.
+  timeoutMs: Number(process.env.REQUEST_TIMEOUT_MS || 90000),
   rateLimitPerMin: Number(process.env.RATE_LIMIT_PER_MIN || 30),
   logLevel: (process.env.LOG_LEVEL || 'info').toLowerCase(),
 };

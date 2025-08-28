@@ -10,7 +10,6 @@ export const env = createEnv({
 	 * isn't built with invalid env vars.
 	 */
 	server: {
-		DATABASE_URL: z.string().optional(),
 		GOOGLE_API_KEY: z.string().optional(),
 		GOOGLE_BASE_URL: z.string().url().optional(),
 		GOOGLE_PROXY_URL: z.string().url().optional(), // Remote proxy endpoint (do not bundle API key locally)
@@ -38,7 +37,6 @@ export const env = createEnv({
 	 * middlewares) or client-side so we need to destruct manually.
 	 */
 	runtimeEnv: {
-		DATABASE_URL: process.env.DATABASE_URL,
 		GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
 		GOOGLE_BASE_URL: process.env.GOOGLE_BASE_URL,
 		GOOGLE_PROXY_URL: process.env.GOOGLE_PROXY_URL,

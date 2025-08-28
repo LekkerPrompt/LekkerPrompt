@@ -1,4 +1,4 @@
-import { readSystemPromptForModeFromDb } from '@/server/settings';
+import { readSystemPromptForMode } from '@/server/settings';
 import { env } from '@/env';
 
 /**

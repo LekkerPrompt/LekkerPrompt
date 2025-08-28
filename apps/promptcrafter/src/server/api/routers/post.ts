@@ -1,10 +1,5 @@
 import { z } from "zod";
-
-import {
-	createTRPCRouter,
-	protectedProcedure,
-	publicProcedure,
-} from "@/server/api/trpc";
+import { createTRPCRouter, protectedProcedure, publicProcedure } from "@/server/api/trpc";
 
 export const postRouter = createTRPCRouter({
 	hello: publicProcedure
@@ -18,21 +13,19 @@ export const postRouter = createTRPCRouter({
 	create: protectedProcedure
 		.input(z.object({ name: z.string().min(1) }))
 		.mutation(async ({ ctx, input }) => {
-			return ctx.db.post.create({
-				data: {
-					name: input.name,
-					createdBy: { connect: { id: ctx.session.user.id } },
-				},
+			const post = await ctx.storage.createPost({
+				name: input.name,
+				createdById: ctx.session.user.id,
 			});
+			return post;
 		}),
 
 	getLatest: protectedProcedure.query(async ({ ctx }) => {
-		const post = await ctx.db.post.findFirst({
-			orderBy: { createdAt: "desc" },
-			where: { createdBy: { id: ctx.session.user.id } },
-		});
-
-		return post ?? null;
+		// Simple latest retrieval by scanning stored posts for this user
+		const posts = await ctx.storage.findPostsByName(""); // returns all posts
+		const userPosts = posts.filter(p => p.createdById === ctx.session.user.id);
+		userPosts.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+		return userPosts[0] ?? null;
 	}),
 
 	getSecretMessage: protectedProcedure.query(() => {

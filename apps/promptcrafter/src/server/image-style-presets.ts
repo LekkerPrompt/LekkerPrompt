@@ -1,6 +1,5 @@
 // Centralized descriptive expansions for image style presets.
 // These get woven into generated image prompts (plain format) to enrich output
-// while staying concise and avoiding copyrighted proper nouns.
 
 export type ImageStylePreset = "photorealistic" | "illustration" | "3d" | "anime" | "watercolor";
 

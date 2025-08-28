@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { readLocalModelConfig, writeLocalModelConfig } from "@/server/local-model";
-import { ensureDbReady } from "@/server/db";
 import { env } from "@/env";
 
 const AllowedModels = ["gemma3:1b", "gemma3:4b", "gemma3:12b", "gemma3:27b"] as const;
@@ -19,7 +18,6 @@ const Body = z.union([OllamaBody, OpenRouterProxyBody]);
 
 export async function GET() {
   try {
-    await ensureDbReady();
     const cfg = await readLocalModelConfig();
     return NextResponse.json({ config: cfg });
   } catch (e) {
@@ -29,7 +27,6 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    await ensureDbReady();
     const json = await req.json();
     const parsed = Body.parse(json);
     await writeLocalModelConfig(parsed);

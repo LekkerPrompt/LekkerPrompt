@@ -1,4 +1,4 @@
-import { ensureDbReady } from "@/server/db";
+import { dataLayer } from "@/server/storage/data-layer";
 
 const SYSTEM_PROMPT_KEY = "SYSTEM_PROMPT" as const;
 const SYSTEM_PROMPT_BUILD_KEY = "SYSTEM_PROMPT_BUILD" as const;
@@ -6,38 +6,28 @@ const SYSTEM_PROMPT_ENHANCE_KEY = "SYSTEM_PROMPT_ENHANCE" as const;
 
 export type PromptMode = "build" | "enhance";
 
-export async function readSystemPromptFromDb(): Promise<string | null> {
-  const db = await ensureDbReady();
-  const setting = await db.appSetting.findUnique({ where: { key: SYSTEM_PROMPT_KEY } });
+export async function readSystemPrompt(): Promise<string | null> {
+  const setting = await dataLayer.findAppSetting(SYSTEM_PROMPT_KEY);
   return setting?.value ?? null;
 }
 
-export async function readSystemPromptForModeFromDb(mode: PromptMode): Promise<string | null> {
-  const db = await ensureDbReady();
+export async function readSystemPromptForMode(mode: PromptMode): Promise<string | null> {
   const key = mode === "build" ? SYSTEM_PROMPT_BUILD_KEY : SYSTEM_PROMPT_ENHANCE_KEY;
-  const setting = await db.appSetting.findUnique({ where: { key } });
+  const setting = await dataLayer.findAppSetting(key);
   if (setting?.value) return setting.value;
   // Fallback to legacy single prompt if per-mode not found
-  return await readSystemPromptFromDb();
+  return await readSystemPrompt();
 }
 
-export async function writeSystemPromptToDb(prompt: string): Promise<void> {
-  const db = await ensureDbReady();
-  await db.appSetting.upsert({
-    where: { key: SYSTEM_PROMPT_KEY },
-    create: { key: SYSTEM_PROMPT_KEY, value: prompt },
-    update: { value: prompt },
-  });
+export async function writeSystemPrompt(prompt: string): Promise<void> {
+  await dataLayer.upsertAppSetting(SYSTEM_PROMPT_KEY, prompt);
 }
 
-export async function writeSystemPromptForModeToDb(mode: PromptMode, prompt: string): Promise<void> {
-  const db = await ensureDbReady();
+export async function writeSystemPromptForMode(mode: PromptMode, prompt: string): Promise<void> {
   const key = mode === "build" ? SYSTEM_PROMPT_BUILD_KEY : SYSTEM_PROMPT_ENHANCE_KEY;
-  await db.appSetting.upsert({
-    where: { key },
-    create: { key, value: prompt },
-    update: { value: prompt },
-  });
+  await dataLayer.upsertAppSetting(key, prompt);
 }
+
+// NOTE: Legacy DB-based helper names removed.
 
 

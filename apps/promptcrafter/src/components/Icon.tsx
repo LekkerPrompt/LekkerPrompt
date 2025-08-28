@@ -11,7 +11,9 @@ import {
   faDatabase,
   faStar,
   faXmark,
-  faBars
+  faBars,
+  faThumbsUp,
+  faThumbsDown,
 } from "@fortawesome/free-solid-svg-icons";
 
 const icons = {
@@ -25,6 +27,8 @@ const icons = {
   star: faStar,
   close: faXmark,
   bars: faBars,
+  thumbsUp: faThumbsUp,
+  thumbsDown: faThumbsDown,
 } as const;
 
 export type IconName = keyof typeof icons;

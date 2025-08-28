@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { setPrivacyConsentForRemoteAPI, hasPrivacyConsentForRemoteAPI } from "@/server/local-model";
-import { ensureDbReady } from "@/server/db";
 
 const Body = z.object({
   accepted: z.boolean(),
@@ -9,7 +8,6 @@ const Body = z.object({
 
 export async function GET() {
   try {
-    await ensureDbReady();
     const hasConsent = await hasPrivacyConsentForRemoteAPI();
     return NextResponse.json({ accepted: hasConsent });
   } catch (e) {
@@ -20,7 +18,6 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    await ensureDbReady();
     const json = await req.json();
     const parsed = Body.parse(json);
     await setPrivacyConsentForRemoteAPI(parsed.accepted);

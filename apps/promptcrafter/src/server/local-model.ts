@@ -1,4 +1,4 @@
-import { ensureDbReady } from "@/server/db";
+import { dataLayer } from "./storage/data-layer";
 
 interface LocalModelConfig {
   provider: string; // e.g. 'ollama'
@@ -13,9 +13,8 @@ const PRIVACY_CONSENT_KEY = "REMOTE_PRIVACY_CONSENT_ACCEPTED";
 
 export async function readLocalModelConfig(): Promise<LocalModelConfig | null> {
   try {
-    const db = await ensureDbReady();
-    const rows = await db.appSetting.findMany({ where: { key: { in: [PROVIDER_KEY, BASE_URL_KEY, MODEL_NAME_KEY] } } }) as Array<{ key: string; value: string | null }>;
-    const map = Object.fromEntries(rows.map((r) => [r.key, r.value ?? ""]));
+    const settings = await dataLayer.findManyAppSettings([PROVIDER_KEY, BASE_URL_KEY, MODEL_NAME_KEY]);
+    const map = Object.fromEntries(settings.map((s) => [s.key, s.value ?? ""]));
     if (!map[PROVIDER_KEY] || !map[BASE_URL_KEY] || !map[MODEL_NAME_KEY]) return null;
     return { provider: map[PROVIDER_KEY], baseUrl: map[BASE_URL_KEY], model: map[MODEL_NAME_KEY] };
   } catch (e) {
@@ -25,12 +24,11 @@ export async function readLocalModelConfig(): Promise<LocalModelConfig | null> {
 }
 
 export async function writeLocalModelConfig(cfg: LocalModelConfig) {
-  const db = await ensureDbReady();
   try {
     await Promise.all([
-      db.appSetting.upsert({ where: { key: PROVIDER_KEY }, create: { key: PROVIDER_KEY, value: cfg.provider }, update: { value: cfg.provider } }),
-      db.appSetting.upsert({ where: { key: BASE_URL_KEY }, create: { key: BASE_URL_KEY, value: cfg.baseUrl }, update: { value: cfg.baseUrl } }),
-      db.appSetting.upsert({ where: { key: MODEL_NAME_KEY }, create: { key: MODEL_NAME_KEY, value: cfg.model }, update: { value: cfg.model } }),
+      dataLayer.upsertAppSetting(PROVIDER_KEY, cfg.provider),
+      dataLayer.upsertAppSetting(BASE_URL_KEY, cfg.baseUrl),
+      dataLayer.upsertAppSetting(MODEL_NAME_KEY, cfg.model),
     ]);
   } catch (e:any) {
     console.error('[local-model] writeLocalModelConfig failed', e);
@@ -45,8 +43,9 @@ export async function validateLocalModelConnection(cfg?: LocalModelConfig | null
     
     if (config.provider === 'openrouter-proxy') {
       // Validate OpenRouter proxy connection
-      const controller = new AbortController();
-      const to = setTimeout(() => controller.abort(), 5000);
+  const controller = new AbortController();
+  // Validation timeout: increased from 5s to 10s now that primary request timeout is 90s.
+  const to = setTimeout(() => controller.abort(), 10000);
       try {
         const healthUrl = config.baseUrl.replace(/\/$/, '') + '/healthz';
         const res = await fetch(healthUrl, { 
@@ -79,9 +78,11 @@ export async function validateLocalModelConnection(cfg?: LocalModelConfig | null
         if (!res.ok) return { ok: false, error: 'unreachable' };
         let json: any = null;
         try { json = await res.json(); } catch { /* ignore */ }
-        if (json && Array.isArray(json.models)) {
+        if (json && Array.isArray(json.models) && json.models.length > 0) {
           const found = json.models.some((m: any) => m?.name === config.model);
           if (!found) return { ok: false, error: 'model-not-found' };
+        } else {
+          return { ok: false, error: 'no-models-found' };
         }
         return { ok: true };
       } catch (e:any) {
@@ -99,17 +100,15 @@ export async function callLocalModel(prompt: string): Promise<string> {
   const cfg = await readLocalModelConfig();
   if (!cfg) throw new Error("Model not configured");
   
-  if (cfg.provider === 'openrouter-proxy') {
-    // Check privacy consent for remote provider (Gemma 3 27B via OpenRouter)
-    const db = await ensureDbReady();
-    const consent = await db.appSetting.findUnique({ where: { key: PRIVACY_CONSENT_KEY } });
-    if (!consent?.value || consent.value !== 'true') {
-      throw new Error("Privacy consent required for remote Gemma 3 27B API. Your prompts will be sent to external servers. Consider using local Ollama for complete privacy.");
-    }
-    
-    // Forward to remote proxy that wraps OpenRouter's Gemma 3 27B model
-    const controller = new AbortController();
-    const to = setTimeout(() => controller.abort(), 20000);
+    if (cfg.provider === 'openrouter-proxy') {
+      // Check privacy consent for remote provider (Gemma 3 27B via OpenRouter)
+      const consent = await dataLayer.findAppSetting(PRIVACY_CONSENT_KEY);
+      if (!consent?.value || consent.value !== 'true') {
+        throw new Error("Privacy consent required for remote Gemma 3 27B API. Your prompts will be sent to external servers. Consider using local Ollama for complete privacy.");
+      }    // Forward to remote proxy that wraps OpenRouter's Gemma 3 27B model
+  const controller = new AbortController();
+  // Extend client-side timeout to 90s to align with proxy upstream timeout.
+  const to = setTimeout(() => controller.abort(), 90000);
     try {
       const res = await fetch(cfg.baseUrl.replace(/\/$/, '') + '/api/googleai/chat', {
         method: 'POST',
@@ -151,18 +150,12 @@ export async function callLocalModel(prompt: string): Promise<string> {
 }
 
 export async function setPrivacyConsentForRemoteAPI(accepted: boolean): Promise<void> {
-  const db = await ensureDbReady();
-  await db.appSetting.upsert({
-    where: { key: PRIVACY_CONSENT_KEY },
-    create: { key: PRIVACY_CONSENT_KEY, value: accepted.toString() },
-    update: { value: accepted.toString() },
-  });
+  await dataLayer.upsertAppSetting(PRIVACY_CONSENT_KEY, accepted.toString());
 }
 
 export async function hasPrivacyConsentForRemoteAPI(): Promise<boolean> {
   try {
-    const db = await ensureDbReady();
-    const consent = await db.appSetting.findUnique({ where: { key: PRIVACY_CONSENT_KEY } });
+    const consent = await dataLayer.findAppSetting(PRIVACY_CONSENT_KEY);
     return consent?.value === 'true';
   } catch {
     return false;

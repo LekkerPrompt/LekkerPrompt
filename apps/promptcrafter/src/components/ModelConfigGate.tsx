@@ -27,9 +27,10 @@ export default function ModelConfigGate({ children }: Props) {
   const [hasValidDefault, setHasValidDefault] = useState(false);
   const [showProviderSelection, setShowProviderSelection] = useState(false);
   const [setAsDefault, setSetAsDefault] = useState(false);
-  const [resettingDb, setResettingDb] = useState(false);
-  const [resetNote, setResetNote] = useState<string | null>(null);
-  const [showRestartModal, setShowRestartModal] = useState(false);
+  // Legacy DB reset state removed (no longer using SQLite); keep placeholders if needed for future migration features
+  // const [resettingDb, setResettingDb] = useState(false);
+  // const [resetNote, setResetNote] = useState<string | null>(null);
+  // const [showRestartModal, setShowRestartModal] = useState(false);
   // Ollama detection state
   const [ollamaCheckPerformed, setOllamaCheckPerformed] = useState(false);
   const [showOllamaMissingModal, setShowOllamaMissingModal] = useState(false);
@@ -222,7 +223,6 @@ export default function ModelConfigGate({ children }: Props) {
   };
 
   return (
-    <>
     <SystemPromptEditorWrapper>
       <OpenProviderSelectionListener onOpen={() => setShowProviderSelection(true)} />
       <div className="relative w-full h-full" data-model-gate={electronMode ? (config ? 'ready' : 'pending') : 'disabled'}>
@@ -433,35 +433,8 @@ export default function ModelConfigGate({ children }: Props) {
                   </div>
                   <div className="flex flex-col gap-2 pt-2">
                     <button disabled={saving || validating} className="w-full rounded-md bg-indigo-600 py-2 text-sm font-semibold text-white disabled:opacity-60">
-                      {saving || validating ? 'Validating…' : (previouslyConfigured ? 'Start PromptCrafter' : 'Start PromptCrafter')}
+                      {saving || validating ? 'Validating…' : 'Start PromptCrafter'}
                     </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (resettingDb) return;
-                        const proceed = confirm('Reset database configuration? You will choose a new folder. Existing data is not migrated automatically.');
-                        if (!proceed) return;
-                        setResettingDb(true); setResetNote(null); setError(null); setConnectionError(null);
-                        try {
-                          // @ts-ignore
-                          const res = await window.promptcrafter?.resetDataDir?.();
-                          if (res?.ok) {
-                            setResetNote('Database location updated. Restart required.');
-                            setShowRestartModal(true);
-                          } else if (res?.cancelled) {
-                            setResetNote('Reset cancelled');
-                          } else if (res?.error) {
-                            setError(res.error);
-                          } else {
-                            setError('Reset failed');
-                          }
-                        } catch (e:any) {
-                          setError(e?.message || 'Reset failed');
-                        } finally { setResettingDb(false); }
-                      }}
-                      className="w-full rounded-md border border-red-500/40 bg-red-900/30 py-2 text-[11px] font-medium text-red-200 hover:bg-red-900/50 disabled:opacity-60"
-                    >{resettingDb ? 'Resetting…' : 'Reset DB Configuration'}</button>
-                    {resetNote && <div className="text-[10px] text-amber-300 text-center">{resetNote}</div>}
                   </div>
                 </form>
                 
@@ -529,28 +502,7 @@ export default function ModelConfigGate({ children }: Props) {
           </div>
         )}
       </div>
-  </SystemPromptEditorWrapper>
-  {showRestartModal && (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70">
-        <div className="w-full max-w-sm rounded-xl border border-white/10 bg-gray-900 p-6 text-gray-100 shadow-2xl">
-          <h2 className="mb-3 text-lg font-semibold">Restart Required</h2>
-          <p className="text-sm text-gray-300 mb-4">The database location has been reset. The application must restart now to use the new configuration.</p>
-          <div className="flex gap-3">
-            <button onClick={() => setShowRestartModal(false)} className="flex-1 rounded-md border border-gray-600 bg-gray-800 py-2 text-sm">Later</button>
-            <button
-              onClick={async () => {
-                try {
-                  // @ts-ignore
-                  await window.promptcrafter?.restartApp?.();
-                } catch { /* ignore */ }
-              }}
-              className="flex-1 rounded-md bg-indigo-600 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
-            >Restart Now</button>
-          </div>
-        </div>
-      </div>
-    )}
-    </>
+    </SystemPromptEditorWrapper>
   );
 }
 

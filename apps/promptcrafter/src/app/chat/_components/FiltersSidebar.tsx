@@ -5,6 +5,7 @@ import { Icon } from "@/components/Icon";
 import { createPortal } from 'react-dom';
 import { api } from "@/trpc/react";
 import { CustomSelect } from "@/components/CustomSelect";
+import RagInfoViewer from "@/components/RagInfoViewer";
 
 type Mode = "build" | "enhance";
 type TaskType = "general" | "coding" | "image" | "research" | "writing" | "marketing";
@@ -29,7 +30,6 @@ interface PresetModel {
 interface FiltersSidebarProps {
   user?: UserInfo;
   onClose?: () => void;
-  openTutorial?: () => void;
   openAccount?: () => void;
   openInfo?: () => void;
   // Presets
@@ -214,6 +214,7 @@ const GemmaConnectionModal: React.FC<{ onClose: () => void; onModelSwitched?: ()
         await fetchModels(); // Refresh to show new current model
         onModelSwitched?.(); // Notify parent component
         alert(`Successfully switched to ${selectedModel} at ${baseUrl}`);
+  try { window.dispatchEvent(new Event('MODEL_CHANGED')); } catch {}
       } else {
         const error = await res.json();
         alert(`Failed to switch model: ${error.error || 'Unknown error'}`);
@@ -470,6 +471,7 @@ const UserMenu: React.FC<{ user?: UserInfo; openAccount?: () => void; currentMod
   const [open, setOpen] = useState(false);
   const [sysOpen, setSysOpen] = useState(false);
   const [gemmaConnectionOpen, setGemmaConnectionOpen] = useState(false);
+  const [ragInfoOpen, setRagInfoOpen] = useState(false);
   const sysBtnRef = useRef<HTMLButtonElement | null>(null);
   const sysTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [submenuPos, setSubmenuPos] = useState<{top:number; left:number} | null>(null);
@@ -581,7 +583,7 @@ const UserMenu: React.FC<{ user?: UserInfo; openAccount?: () => void; currentMod
                   onClick={() => { window.dispatchEvent(new CustomEvent('open-db-location')); setOpen(false); setSysOpen(false); }}
                   className="menu-item"
                   role="menuitem"
-                >DB Location</button>
+                >Data Location</button>
                 <button
                   type="button"
                   onClick={() => { window.dispatchEvent(new CustomEvent('open-system-prompts')); setOpen(false); setSysOpen(false); }}
@@ -594,6 +596,12 @@ const UserMenu: React.FC<{ user?: UserInfo; openAccount?: () => void; currentMod
                   className="menu-item"
                   role="menuitem"
                 >Local Gemma 3 Model(s)</button>
+                <button
+                  type="button"
+                  onClick={() => { setRagInfoOpen(true); setOpen(false); setSysOpen(false); }}
+                  className="menu-item"
+                  role="menuitem"
+                >RAG Learning Data</button>
               </div>, document.body)
             }
           </div>
@@ -634,6 +642,27 @@ const UserMenu: React.FC<{ user?: UserInfo; openAccount?: () => void; currentMod
         />, 
         document.body
       )}
+      {ragInfoOpen && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-gray-900 rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-gray-700">
+              <h2 className="text-lg font-semibold text-white">RAG Learning Data</h2>
+              <button
+                type="button"
+                onClick={() => setRagInfoOpen(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+                aria-label="Close RAG info"
+              >
+                <Icon name="close" className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1">
+              <RagInfoViewer />
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };
@@ -642,7 +671,6 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
   const {
     user,
     onClose,
-    openTutorial,
     openAccount,
     openInfo,
     presets,
@@ -1232,7 +1260,6 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
         )}
         
         {/* Bottom actions: Add New Preset / Duplicate Preset (hidden in add mode) */}
-        {/* Note: Tutorial button moved to fixed bottom section for visual separation */}
       </div>
       ) : (
       <ChatsTab
@@ -1242,21 +1269,7 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
         onDeleteChat={onDeleteChat}
       />
       )}
-
-      <div className="shrink-0 border-t border-gray-800 pt-3">
-        {/* Separated Tutorial button for clarity */}
-        <div className="mt-2">
-          <button
-            type="button"
-            onClick={() => openTutorial && openTutorial()}
-            className="inline-flex w-full items-center justify-center whitespace-nowrap rounded-md border border-indigo-500/50 bg-indigo-500/10 px-3 py-2 text-sm font-medium text-indigo-300 transition hover:bg-indigo-500/20 hover:text-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-400/30"
-            aria-label="Tutorial"
-            title="Tutorial"
-          >
-            Tutorial
-          </button>
-        </div>
-      </div>
+      {/* Removed deprecated Tutorial button section */}
     </div>
   );
 }
