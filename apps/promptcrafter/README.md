@@ -10,8 +10,6 @@
   <a href="https://github.com/LekkerPrompt/LekkerPrompt">Repo Home</a> · <a href="https://github.com/LekkerPrompt/LekkerPrompt/issues">Issues</a> · <a href="https://promptcrafter.org">Website</a>
 </div>
 
----
-
 ## What Is PromptCrafter?
 
 PromptCrafter lets you compose new prompts (Build mode) or iteratively refine existing text (Enhance mode) using structured task & style controls. Everything—chats, presets, system prompts, app settings, personalization vectors—is stored as plain JSON files in a directory you pick on first launch. No external database or cloud service is required.
@@ -19,8 +17,6 @@ PromptCrafter lets you compose new prompts (Build mode) or iteratively refine ex
 The codebase runs in two contexts:
 1. Dev Web (Next.js dev server started by Electron)
 2. Packaged Desktop (Electron with embedded production Next.js server)
-
----
 
 ## Features
 
@@ -34,8 +30,6 @@ The codebase runs in two contexts:
 - Explicit privacy consent gate for remote model usage
 - Electron niceties: spellcheck (en‑US), custom context menu with suggestions, controlled window sizing
 
----
-
 ## Download
 
 If you just want to use the app (no local build), grab the latest signed installers / portable builds from:
@@ -44,8 +38,6 @@ If you just want to use the app (no local build), grab the latest signed install
 - Website mirror: https://promptcrafter.org
 
 Then launch and pick a data directory on first run. Building from source is only needed if you want to hack on the code.
-
----
 
 ## Stack
 
@@ -59,8 +51,6 @@ Then launch and pick a data directory on first run. Building from source is only
 
 No SQL / Prisma layer—intentionally simplified.
 
----
-
 ## Quick Start (Development)
 
 Prerequisites: Node 18.18+ (recommend 20+). From this folder:
@@ -73,8 +63,6 @@ npm run dev
 Electron launches and spawns the Next.js dev server. Choose a data directory when prompted; JSON state files & the vector index are created there.
 
 To experiment without providing all env vars, `SKIP_ENV_VALIDATION=1` is already set by the dev script.
-
----
 
 ## Environment Variables (Optional)
 
@@ -92,7 +80,6 @@ To experiment without providing all env vars, `SKIP_ENV_VALIDATION=1` is already
 
 All are optional; remote model features simply won't function until the relevant values & consents exist.
 
----
 
 ## Model Configuration
 
@@ -106,7 +93,6 @@ Remote usage only activates after explicit privacy consent inside the app.
 
 See `src/server/local-model.ts` for connectivity helpers.
 
----
 
 ## Building Production Desktop Bundles
 
@@ -117,7 +103,6 @@ npm run dist:electron  # All supported targets (needs platform tooling)
 
 Process: `build:electron` (Next.js production build) → `electron-builder` (asar packaging; selected `.next` assets unpacked). The main process starts an internal HTTP server for dynamic Next.js routes in production.
 
----
 
 ## Scripts (select)
 
@@ -129,13 +114,11 @@ Process: `build:electron` (Next.js production build) → `electron-builder` (asa
 | check / check:write | Biome lint & auto‑fix |
 | typecheck | TypeScript checking |
 
----
 
 ## Data Model
 
 Logical entities (`User`, `PromptPreset`, `Chat`, `ChatMessage`, `AppSetting`) are stored as individual JSON documents with a companion vector store for semantic personalization / retrieval. Remove the chosen data directory to fully clear state.
 
----
 
 ## Code Map
 
@@ -148,7 +131,6 @@ Logical entities (`User`, `PromptPreset`, `Chat`, `ChatMessage`, `AppSetting`) a
 - System prompts & settings: `src/server/settings.ts`
 - Storage layer: `src/server/storage/*` (JSON + vector store)
 
----
 
 ## Contributing
 
@@ -163,10 +145,10 @@ Guidelines:
 - Keep PRs focused & small where possible.
 - Match existing code style (Biome will enforce formatting).
 
----
-
 ## License
 
 MIT © [LekkerPrompt](https://github.com/LekkerPrompt/LekkerPrompt)
+
+---
 
 If this project helps you, a star ⭐ is appreciated.
