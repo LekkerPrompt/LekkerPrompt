@@ -68,11 +68,12 @@ Contributors :heart: :
 
 ## License
 
-MIT © LekkerPrompt. If the project helps you, a star ⭐ is appreciated.
+MIT © LekkerPrompt
 
 ---
 
-App details: `apps/promptcrafter/README.md`.
+If the project helps you, a star ⭐ is appreciated.
+
 
 
 
