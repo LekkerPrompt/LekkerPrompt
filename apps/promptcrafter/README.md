@@ -1,168 +1,161 @@
 <p align="center">
-  <img src="https://promptcrafter.org/images/prompt-crafter-logo.png" alt="LekkerPrompt Logo" width="300" height="300" />
+  <img src="https://promptcrafter.org/images/prompt-crafter-logo.png" alt="PromptCrafter Logo" width="300" height="300" />
 </p>
 
 <p align="center">
-  <strong>PromptCrafter</strong>: local privacy‑first Electron app for structured prompt building and enhancing.
+  <strong>PromptCrafter</strong> — local‑first, privacy‑friendly prompt building & enhancement (Electron + Next.js).
 </p>
 
 <div align="center">
-  <a href="https://github.com/LekkerPrompt/LekkerPrompt">Repo Home</a> · <a href="https://github.com/LekkerPrompt/LekkerPrompt/issues">Issues</a> · <a href="https://promptcrafter.org">promptcrafter.org</a>
+  <a href="https://github.com/LekkerPrompt/LekkerPrompt">Repo Home</a> · <a href="https://github.com/LekkerPrompt/LekkerPrompt/issues">Issues</a> · <a href="https://promptcrafter.org">Website</a>
 </div>
 
 ---
 
-# PromptCrafter (Electron + Next.js)
+## What Is PromptCrafter?
 
-PromptCrafter lets you <em>build</em> new prompts or <em>enhance</em> existing text using task‑specific and style controls. It stores your chats, presets, system prompts, and retrieval vectors locally as plain JSON files inside a directory you choose on first run of the packaged Electron app.
+PromptCrafter lets you compose new prompts (Build mode) or iteratively refine existing text (Enhance mode) using structured task & style controls. Everything—chats, presets, system prompts, app settings, personalization vectors—is stored as plain JSON files in a directory you pick on first launch. No external database or cloud service is required.
 
-The same codebase runs in two modes:
-
-1. Dev Web (Next.js dev server)
-2. Packaged Desktop (Electron + embedded Next.js server)
+The codebase runs in two contexts:
+1. Dev Web (Next.js dev server started by Electron)
+2. Packaged Desktop (Electron with embedded production Next.js server)
 
 ---
 
-## Feature Summary
+## Features
 
 - Modes: build / enhance
 - Task types: general, coding, image, research, writing, marketing
-- Options: tone, detail level, output format, language, temperature
-- Presets: create, edit, delete, set default
-- Chat history: persisted; reopen & continue
-- System prompts: per-mode overrides, stored locally (fallback chain: stored per-mode > global env > internal fallback)
-- Local model config (Ollama) or remote proxy (OpenRouter / Google AI endpoint)
-- Privacy consent gate for remote model usage
-- Electron niceties: spellcheck (en-US), custom context menu w/ suggestions, controlled window sizing
+- Customization: tone, detail level, output format, language, temperature
+- Presets: create / edit / delete / set default
+- Persistent chat history (reopen & continue)
+- System prompts: per‑mode overrides (priority chain: per‑mode stored > global stored > env > internal fallback)
+- Local model config (Ollama) or remote proxy / Google AI endpoints
+- Explicit privacy consent gate for remote model usage
+- Electron niceties: spellcheck (en‑US), custom context menu with suggestions, controlled window sizing
 
 ---
 
 ## Stack
 
-- Next.js
+- Next.js (App Router)
 - Electron
 - TypeScript
-- Local JSON stores (no SQL database)
 - tRPC + React Query
 - Tailwind CSS
-- Biome
+- Local JSON storage (+ lightweight vector store)
+- Biome (lint / format)
+
+No SQL / Prisma layer—intentionally simplified.
 
 ---
 
-## Development Quick Start
+## Quick Start (Development)
 
-Prerequisites: Node >= 18.18 (recommended 20+). No external database required.
+Prerequisites: Node 18.18+ (recommend 20+). From this folder:
 
 ```bash
 npm install
 npm run dev
 ```
 
-This launches Electron (which spawns the Next.js dev server). Choose a data directory when prompted; your JSON state files and vector index will live there.
+Electron launches and spawns the Next.js dev server. Choose a data directory when prompted; JSON state files & the vector index are created there.
+
+To experiment without providing all env vars, `SKIP_ENV_VALIDATION=1` is already set by the dev script.
 
 ---
 
-## Environment Variables
-
-All server env vars are optional for local experimentation. Provide them to enable remote model calls or baked-in system prompts.
+## Environment Variables (Optional)
 
 | Name | Description |
 |------|-------------|
-| DATA_DIR | Normally set automatically by Electron after directory selection (overrides default ./data). |
-| GOOGLE_API_KEY | API key for calling Google AI endpoints directly. |
-| GOOGLE_BASE_URL | Full model endpoint URL (e.g. https://.../models/gemma-2-...:generateContent). |
-| GOOGLE_PROXY_URL | Optional proxy endpoint if you don't want to bundle your key. |
-| GOOGLE_PROXY_AUTH_TOKEN | Shared secret header for proxy authentication. |
+| DATA_DIR | Normally auto‑set by Electron (overrides default `./data`). |
+| GOOGLE_API_KEY | Direct Google AI key (if calling endpoints directly). |
+| GOOGLE_BASE_URL | Full model endpoint URL override. |
+| GOOGLE_PROXY_URL | Privacy proxy endpoint (instead of bundling key). |
+| GOOGLE_PROXY_AUTH_TOKEN | Shared secret sent to proxy. |
 | GOOGLE_SYSTEM_PROMPT | Global default system prompt. |
-| GOOGLE_SYSTEM_PROMPT_BUILD | Build-mode specific system prompt. |
-| GOOGLE_SYSTEM_PROMPT_ENHANCE | Enhance-mode specific system prompt. |
-| NEXT_PUBLIC_BASE_PATH | Optional client base path when hosting under a subpath (web build). |
+| GOOGLE_SYSTEM_PROMPT_BUILD | Build‑mode prompt override. |
+| GOOGLE_SYSTEM_PROMPT_ENHANCE | Enhance‑mode prompt override. |
+| NEXT_PUBLIC_BASE_PATH | Base path if served under a subpath (web build). |
 
-Set `SKIP_ENV_VALIDATION=1` when experimenting; the dev/Electron scripts already do this.
-
----
-
-## Local & Remote Model Configuration
-
-Stored as local app settings (`MODEL_PROVIDER`, `MODEL_BASE_URL`, `MODEL_NAME`) in JSON. Two supported providers:
-
-1. `ollama`
-   - `MODEL_BASE_URL`: e.g. `http://localhost:11434`
-   - `MODEL_NAME`: e.g. `gemma:4b`
-2. `openrouter-proxy`
-   - `MODEL_BASE_URL`: proxy endpoint you control
-   - `MODEL_NAME`: auth token (passed as header `x-proxy-auth`)
-
-Remote provider usage (openrouter-proxy) requires explicit privacy consent, stored under `REMOTE_PRIVACY_CONSENT_ACCEPTED`.
-
-`local-model.ts` contains helpers for reading/writing config and validating connectivity.
+All are optional; remote model features simply won't function until the relevant values & consents exist.
 
 ---
 
-## Build & Distribution
+## Model Configuration
 
-Production desktop bundles:
+Stored locally as JSON settings: `MODEL_PROVIDER`, `MODEL_BASE_URL`, `MODEL_NAME`, plus a consent key for remote usage.
+
+Supported providers:
+1. `ollama` — local daemon (e.g. `http://localhost:11434`, model `gemma:4b`).
+2. `openrouter-proxy` — a user‑controlled proxy; token passed as header `x-proxy-auth`.
+
+Remote usage only activates after explicit privacy consent inside the app.
+
+See `src/server/local-model.ts` for connectivity helpers.
+
+---
+
+## Building Production Desktop Bundles
 
 ```bash
 npm run dist:win       # Windows installer + portable
-npm run dist:electron  # All targets (requires platform tooling)
+npm run dist:electron  # All supported targets (needs platform tooling)
 ```
 
-Internally these run `build:electron` then `electron-builder` (with asar packaging; `.next` assets are unpacked where necessary). The main process starts an embedded Next.js server in production to support dynamic routes.
+Process: `build:electron` (Next.js production build) → `electron-builder` (asar packaging; selected `.next` assets unpacked). The main process starts an internal HTTP server for dynamic Next.js routes in production.
 
 ---
 
-## Project Scripts (selected)
+## Scripts (select)
 
 | Script | Purpose |
 |--------|---------|
-| dev | Launch Electron (Next.js dev) |
-| build:electron | Build Next.js for production (no trace) |
-| dist:win / dist:electron | Package desktop app(s) |
-| (removed) | Former DB schema scripts removed – JSON storage now |
-| check / check:write | Biome lint/format |
-| typecheck | TypeScript type checking |
+| dev | Electron + Next.js dev |
+| build:electron | Production Next.js build for Electron |
+| dist:win / dist:electron | Package installers / bundles |
+| check / check:write | Biome lint & auto‑fix |
+| typecheck | TypeScript checking |
 
 ---
 
-## Data & Schema
+## Data Model
 
-Logical models: `User`, `Post`, `PromptPreset`, `Chat`, `ChatMessage`, `AppSetting` – all persisted as JSON documents + a lightweight vector store for semantic search & personalization.
-
-The `Account/Session` tables are present for structural similarity (auth flows may be trimmed in pure local mode).
+Logical entities (`User`, `PromptPreset`, `Chat`, `ChatMessage`, `AppSetting`) are stored as individual JSON documents with a companion vector store for semantic personalization / retrieval. Remove the chosen data directory to fully clear state.
 
 ---
 
-## Code Pointers
+## Code Map
 
 - Electron main: `electron/main.cjs`
 - Preload: `electron/preload.cjs`
-- Startup script: `electron/start-electron.cjs`
+- Startup orchestrator: `electron/start-electron.cjs`
 - Env schema: `src/env.js`
-- Model logic (Gemma / Google): `src/server/gemma.ts` & context helpers
-- Local/remote model bridge: `src/server/local-model.ts`
+- Model logic (Gemma / Google): `src/server/gemma.ts` (+ context helpers)
+- Local/remote bridge: `src/server/local-model.ts`
 - System prompts & settings: `src/server/settings.ts`
-- Storage layer: `src/server/storage/*` (JSON + vector stores)
+- Storage layer: `src/server/storage/*` (JSON + vector store)
 
 ---
 
 ## Contributing
 
-PRs & issues welcome. Useful areas:
-
+You're welcome to open Issues & PRs. High‑impact areas:
 - Additional providers (LM Studio, vLLM, etc.)
-- Advanced prompt diffing / comparison UI
-- Accessibility (keyboard navigation, screen reader labels)
-- Localization (multi-language UI)
+- Enhanced prompt diff / comparison UI
+- Accessibility (keyboard shortcuts, ARIA labels)
+- Localization / multi‑language support
 
-Open an Issue for large proposals before implementation.
+Guidelines:
+- Discuss large features first via an Issue.
+- Keep PRs focused & small where possible.
+- Match existing code style (Biome will enforce formatting).
 
 ---
 
 ## License
 
 MIT © [LekkerPrompt](https://github.com/LekkerPrompt/LekkerPrompt)
-
----
 
 If this project helps you, a star ⭐ is appreciated.
