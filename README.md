@@ -58,6 +58,12 @@ An Electron window will open and prompt you for a data directory. That's it.
 
 Issues & PRs welcome. Please read the app README first and open an Issue for major proposals.
 
+Contributors :heart: :
+
+<a href="https://github.com/sammyhamwi/LekkerPrompt/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=sammyhamwi/LekkerPrompt" alt="Contributors" />
+</a>
+
 ---
 
 ## License
@@ -67,6 +73,7 @@ MIT © LekkerPrompt. If the project helps you, a star ⭐ is appreciated.
 ---
 
 App details: `apps/promptcrafter/README.md`.
+
 
 
 
