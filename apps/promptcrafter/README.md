@@ -36,6 +36,17 @@ The codebase runs in two contexts:
 
 ---
 
+## Download
+
+If you just want to use the app (no local build), grab the latest signed installers / portable builds from:
+
+- GitHub Releases: https://github.com/LekkerPrompt/LekkerPrompt/releases
+- Website mirror: https://promptcrafter.org
+
+Then launch and pick a data directory on first run. Building from source is only needed if you want to hack on the code.
+
+---
+
 ## Stack
 
 - Next.js (App Router)
