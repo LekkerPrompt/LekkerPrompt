@@ -145,6 +145,20 @@ Guidelines:
 - Keep PRs focused & small where possible.
 - Match existing code style (Biome will enforce formatting).
 
+## UI/UX Goals 
+
+### Based on review of v1.0.0
+
+- Adding color theme options would make the user experience customizable and fun.
+- Labels, actions, and flows should feel clear and intuitive, so users don’t have to think twice.
+- Keeping colors, icons, and typography consistent will help build trust and makes the app feel polished.
+- Clean layouts with enough breathing space let users focus without feeling overwhelmed.
+- Subtle touches like color themes, logos, or placeholders can reinforce the app’s identity without distracting from the main experience.
+- Critical buttons (CTAs) should be placed thoughtfully to avoid accidental taps or clicks.
+- A clear visual hierarchy would make navigation smooth and effortless.
+
+Projected timeline: all UI and functionality are expected to be completed by December 2025.
+
 ## License
 
 MIT © [LekkerPrompt](https://github.com/LekkerPrompt/LekkerPrompt)
