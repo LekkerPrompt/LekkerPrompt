@@ -50,8 +50,8 @@ Issues & PRs welcome. Please read the app README first and open an Issue for maj
 
 Contributors :heart: :
 
-<a href="https://github.com/sammyhamwi/LekkerPrompt/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=sammyhamwi/LekkerPrompt" alt="Contributors" />
+<a href="[https://github.com/sammyhamwi/LekkerPrompt/graphs/contributors](https://github.com/LekkerPrompt/LekkerPrompt/graphs/contributors)">
+  <img src="https://contrib.rocks/image?repo=LekkerPrompt/LekkerPrompt" alt="Contributors" />
 </a>
 
 ## License
@@ -61,6 +61,7 @@ MIT © LekkerPrompt
 ---
 
 If the project helps you, a star ⭐ is appreciated.
+
 
 
 
