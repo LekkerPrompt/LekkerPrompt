@@ -7,7 +7,7 @@
 </p>
 
 <div align="center">
-  <a href="https://github.com/LekkerPrompt/LekkerPrompt">Repo Home</a> · <a href="https://github.com/LekkerPrompt/LekkerPrompt/issues">Issues</a> · <a href="https://promptcrafter.org">Website</a>
+  <a href="https://github.com/LekkerPrompt">LekkerPrompt</a> · <a href="https://github.com/LekkerPrompt/LekkerPrompt/issues">Issues</a> · <a href="https://promptcrafter.org">Website</a>
 </div>
 
 ## What Is PromptCrafter?
