@@ -7,7 +7,7 @@
 </p>
 
 <div align="center">
-  <a href="https://github.com/LekkerPrompt">LekkerPrompt</a> · <a href="https://github.com/LekkerPrompt/LekkerPrompt/issues">Issues</a> · <a href="https://promptcrafter.org">Website</a>
+  <a href="https://github.com/LekkerPrompt">LekkerPrompt</a> · <a href="https://github.com/LekkerPrompt/PromptCrafter/issues">Issues</a> · <a href="https://promptcrafter.org">Website</a>
 </div>
 
 ## What Is PromptCrafter?
@@ -161,7 +161,7 @@ Projected timeline: all UI and functionality are expected to be completed by Dec
 
 ## License
 
-MIT © [LekkerPrompt](https://github.com/LekkerPrompt/LekkerPrompt)
+MIT © LekkerPrompt
 
 ---
 
