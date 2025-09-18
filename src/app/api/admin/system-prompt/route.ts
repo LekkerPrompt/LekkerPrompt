@@ -13,8 +13,8 @@ export async function GET() {
   if (!session?.user || !isAdmin()) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const build = (await readSystemPromptForMode("build")) ?? env.GOOGLE_SYSTEM_PROMPT_BUILD ?? env.GOOGLE_SYSTEM_PROMPT ?? "";
-  const enhance = (await readSystemPromptForMode("enhance")) ?? env.GOOGLE_SYSTEM_PROMPT_ENHANCE ?? env.GOOGLE_SYSTEM_PROMPT ?? "";
+  const build = (await readSystemPromptForMode("build")) ?? env.GOOGLE_SYSTEM_PROMPT_BUILD ?? "";
+  const enhance = (await readSystemPromptForMode("enhance")) ?? env.GOOGLE_SYSTEM_PROMPT_ENHANCE ?? "";
   return NextResponse.json({ build, enhance });
 }
 

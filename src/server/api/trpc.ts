@@ -42,7 +42,7 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
  */
 const t = initTRPC.context<typeof createTRPCContext>().create({
 	transformer: superjson,
-	errorFormatter({ shape, error }) {
+	errorFormatter({ shape, error }: { shape: any; error: any }) {
 		return {
 			...shape,
 			data: {
@@ -81,7 +81,7 @@ export const createTRPCRouter = t.router;
  * You can remove this if you don't like it, but it can help catch unwanted waterfalls by simulating
  * network latency that would occur in production but not in local development.
  */
-const timingMiddleware = t.middleware(async ({ next, path }) => {
+const timingMiddleware = t.middleware(async ({ next, path }: { next: any; path: string }) => {
 	const start = Date.now();
 
 	if (t._config.isDev) {
@@ -96,6 +96,19 @@ const timingMiddleware = t.middleware(async ({ next, path }) => {
 	console.log(`[TRPC] ${path} took ${end - start}ms to execute`);
 
 	return result;
+});
+
+// Typed auth middleware that guarantees ctx.session.user exists for following procedures
+const enforceUserIsAuthed = t.middleware(({ ctx, next }) => {
+	if (!ctx.session?.user) {
+		const isElectron = !!(process as any)?.versions?.electron;
+		if (isElectron) {
+			const session = { user: { id: "local-user" } };
+			return next({ ctx: { session } });
+		}
+		throw new TRPCError({ code: "UNAUTHORIZED" });
+	}
+	return next({ ctx: { session: { ...(ctx.session as any), user: ctx.session.user } } });
 });
 
 /**
@@ -117,15 +130,5 @@ export const publicProcedure = t.procedure.use(timingMiddleware);
  */
 export const protectedProcedure = t.procedure
 	.use(timingMiddleware)
-	.use(({ ctx, next }) => {
-		if (!ctx.session?.user) {
-			const isElectron = !!(process as any)?.versions?.electron;
-			if (isElectron) {
-				const session = { user: { id: "local-user" } } as any;
-				return next({ ctx: { session } });
-			}
-			throw new TRPCError({ code: "UNAUTHORIZED" });
-		}
-		return next({ ctx: { session: { ...ctx.session, user: ctx.session.user } } });
-	});
+	.use(enforceUserIsAuthed);
 

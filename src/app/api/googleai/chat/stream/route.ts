@@ -4,6 +4,7 @@ import { auth } from '@/server/auth';
 import { buildUnifiedPrompt } from '@/server/prompt-builder';
 import { callLocalModel } from '@/server/local-model';
 import type { PromptMode, TaskType } from '@/server/googleai';
+import { sanitizeAndDetectDrift } from '@/server/output-sanitize';
 
 const BodySchema = z.object({
   input: z.string().min(1),
@@ -34,11 +35,22 @@ export async function POST(req: Request) {
           controller.close();
           return;
         }
-        const full = await callLocalModel(built);
-        const chunks = full.match(/.{1,400}/gs) || [full];
+        const raw = await callLocalModel(built, { mode: parsed.mode as PromptMode, taskType: parsed.taskType as TaskType, options: parsed.options });
+        const sanitized = sanitizeAndDetectDrift(parsed.taskType as TaskType, parsed.options, raw).cleaned || raw;
+        const fmt = parsed.options?.format ?? 'plain';
+        const chunks = sanitized.match(/.{1,400}/gs) || [sanitized];
+        // For markdown/json, stream opening fence, body chunks, then closing fence
+        if (fmt === 'markdown') {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ delta: '```markdown\n' })}\n\n`));
+        } else if (fmt === 'json') {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ delta: '```json\n' })}\n\n`));
+        }
         for (const c of chunks) {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ delta: c })}\n\n`));
           await new Promise(r => setTimeout(r, 20));
+        }
+        if (fmt === 'markdown' || fmt === 'json') {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ delta: '\n```' })}\n\n`));
         }
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`));
         controller.close();

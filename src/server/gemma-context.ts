@@ -15,17 +15,17 @@ export type PromptMode = "build" | "enhance";
 export type TaskType = "general" | "coding" | "image" | "research" | "writing" | "marketing";
 
 export interface GenerationOptions {
-  tone?: "neutral" | "friendly" | "formal" | "technical" | "persuasive";
-  detail?: "brief" | "normal" | "detailed";
-  format?: "plain" | "markdown" | "json";
-  audience?: string;
-  language?: string;
-  temperature?: number;
+  tone?: "neutral" | "friendly" | "formal" | "technical" | "persuasive" | undefined;
+  detail?: "brief" | "normal" | "detailed" | undefined;
+  format?: "plain" | "markdown" | "json" | undefined;
+  audience?: string | undefined;
+  language?: string | undefined;
+  temperature?: number | undefined;
   // Task-specific
-  stylePreset?: "photorealistic" | "illustration" | "3d" | "anime" | "watercolor";
-  aspectRatio?: "1:1" | "16:9" | "9:16" | "4:3";
-  includeTests?: boolean;
-  requireCitations?: boolean;
+  stylePreset?: "photorealistic" | "illustration" | "3d" | "anime" | "watercolor" | undefined;
+  aspectRatio?: "1:1" | "16:9" | "9:16" | "4:3" | undefined;
+  includeTests?: boolean | undefined;
+  requireCitations?: boolean | undefined;
 }
 
 export interface BuildPromptInput {

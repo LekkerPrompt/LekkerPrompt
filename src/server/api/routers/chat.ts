@@ -44,18 +44,18 @@ export const chatRouter = createTRPCRouter({
     }),
 
   appendMessages: protectedProcedure
-    .input(z.object({ 
-      chatId: z.string(), 
-      messages: z.array(MessageSchema), 
-      cap: z.number().default(50) 
+    .input(z.object({
+      chatId: z.string(),
+      messages: z.array(MessageSchema),
+      cap: z.number().default(50)
     }))
     .mutation(async ({ ctx, input }) => {
       const { chatId, messages, cap } = input;
       const isElectron = !!(process as any)?.versions?.electron;
       const uid = isElectron ? localUserId : ctx.session.user.id;
-      
+
       console.log(`appendMessages called for chatId: ${chatId}, uid: ${uid}, messages:`, messages.length);
-      
+
       // Verify ownership
       const chat = await ctx.storage.findChatById(chatId);
       if (!chat || chat.userId !== uid) {
@@ -63,36 +63,28 @@ export const chatRouter = createTRPCRouter({
         throw new Error("Not found");
       }
 
-      // Insert new messages
+      // Atomically append and trim to cap within one critical section on the messages store
+      let createdMessages: any[] = [];
       if (messages.length > 0) {
         const messagesToCreate = messages.map((m) => ({
-          chatId,
           role: m.role,
           content: m.content,
           userFeedback: m.userFeedback,
         }));
-        
-        console.log(`Creating messages:`, messagesToCreate);
-        await ctx.storage.createChatMessages(messagesToCreate);
-        await ctx.storage.updateChat(chatId, { updatedAt: new Date() });
+        console.log(`Creating messages (atomic append+trim):`, messagesToCreate.length);
+        const result = await ctx.storage.appendMessagesWithCap(chatId, messagesToCreate, cap);
+        createdMessages = result.created;
       }
 
-      // Enforce cap
-      const total = await ctx.storage.countChatMessages(chatId);
-      if (total > cap) {
-        const toDelete = total - cap;
-        const allMessages = await ctx.storage.findChatMessages(chatId, total);
-        const oldestIds = allMessages
-          .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-          .slice(0, toDelete)
-          .map(m => m.id);
-        
-        if (oldestIds.length) {
-          await ctx.storage.deleteChatMessages(oldestIds);
-        }
-      }
-
-      return { ok: true };
+      return {
+        ok: true,
+        createdMessages: createdMessages.map(m => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          userFeedback: m.userFeedback
+        }))
+      };
     }),
 
   get: protectedProcedure
@@ -131,26 +123,42 @@ export const chatRouter = createTRPCRouter({
 
   // New endpoints for like/dislike functionality
   setMessageFeedback: protectedProcedure
-    .input(z.object({ 
-      messageId: z.string(), 
-      feedback: z.enum(["like", "dislike"]) 
+    .input(z.object({
+      messageId: z.string(),
+      feedback: z.enum(["like", "dislike"])
     }))
     .mutation(async ({ ctx, input }) => {
-      const success = await ctx.storage.setMessageFeedback(input.messageId, input.feedback);
-      if (!success) {
-        throw new Error("Message not found");
+      try {
+        console.log(`Setting message feedback: messageId=${input.messageId}, feedback=${input.feedback}`);
+        const success = await ctx.storage.setMessageFeedback(input.messageId, input.feedback);
+        if (!success) {
+          console.error(`Message not found: ${input.messageId}`);
+          throw new Error("Message not found");
+        }
+        console.log(`Successfully set feedback for message ${input.messageId}`);
+        return { ok: true };
+      } catch (error) {
+        console.error(`Failed to set message feedback:`, error);
+        throw new Error(`Failed to set message feedback: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
-      return { ok: true };
     }),
 
   removeMessageFeedback: protectedProcedure
     .input(z.object({ messageId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const success = await ctx.storage.removeMessageFeedback(input.messageId);
-      if (!success) {
-        throw new Error("Message not found");
+      try {
+        console.log(`Removing message feedback: messageId=${input.messageId}`);
+        const success = await ctx.storage.removeMessageFeedback(input.messageId);
+        if (!success) {
+          console.error(`Message not found: ${input.messageId}`);
+          throw new Error("Message not found");
+        }
+        console.log(`Successfully removed feedback for message ${input.messageId}`);
+        return { ok: true };
+      } catch (error) {
+        console.error(`Failed to remove message feedback:`, error);
+        throw new Error(`Failed to remove message feedback: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
-      return { ok: true };
     }),
 
   // RAG-powered personalized suggestions

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { env } from "@/env";
+import { resetDataDirCache } from "@/server/storage/data-path";
 
 // This endpoint forces a refresh of the data layer after DATA_DIR changes
 export async function POST() {
@@ -11,10 +12,9 @@ export async function POST() {
       return NextResponse.json({ ok: false, error: "Only available in Electron mode" }, { status: 400 });
     }
 
-    // Check if DATA_DIR is now configured
-    if (!process.env.DATA_DIR) {
-      return NextResponse.json({ ok: false, error: "DATA_DIR not configured" }, { status: 400 });
-    }
+    // In dev, DATA_DIR may not be present in Next's env. Instead, reset caches
+    // and let resolvers read the Electron config file.
+    resetDataDirCache();
 
     // Clear any existing data layer cache to force re-initialization
     const globalAny = globalThis as any;

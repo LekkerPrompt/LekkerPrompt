@@ -29,7 +29,7 @@ export async function callGemma({ input, mode, taskType, options }: GemmaChatInp
   }
 
   // Step 2: Build minimal context
-  const context = await buildGemmaContext({ input, mode, taskType, options });
+  const context = await buildGemmaContext({ input, mode, taskType, ...(options && { options }) });
   
   // Handle validation errors from context building
   if (context.startsWith('ERROR:')) {
@@ -97,18 +97,29 @@ async function callGemmaModel(context: string, systemPrompt: string, options?: G
     }
   };
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { 
-      "Content-Type": "application/json",
-      "User-Agent": "Gemma-Context-System/1.0"
-    },
-    body: JSON.stringify(payload),
-  });
+  const controller = new AbortController();
+  const to = setTimeout(() => controller.abort(), 90000);
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        "User-Agent": "Gemma-Context-System/1.0"
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } catch (e:any) {
+    if (e?.name === 'AbortError') throw new Error('Gemma API timeout');
+    throw e;
+  } finally {
+    clearTimeout(to);
+  }
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`API error ${response.status}: ${errorText}`);
+    const errorText = await response.text().catch(() => '');
+    throw new Error(`API error ${response.status}: ${errorText.slice(0, 2048)}`);
   }
 
   const data = await response.json();

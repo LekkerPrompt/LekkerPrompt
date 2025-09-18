@@ -56,7 +56,7 @@ export async function POST(req: Request) {
       input: parsed.input,
       mode: parsed.mode as PromptMode,
       taskType: parsed.taskType as TaskType,
-      options: parsed.options,
+      ...(parsed.options && { options: parsed.options }),
     });
 
     return NextResponse.json({ 

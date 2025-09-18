@@ -22,7 +22,6 @@ const OptionsSchema = z.object({
 const BodySchema = z.object({
   id: z.string().optional(),
   name: z.string().min(1).max(100),
-  mode: z.enum(["build", "enhance"]),
   taskType: z.enum(["general", "coding", "image", "research", "writing", "marketing"]),
   options: OptionsSchema.optional(),
 });
@@ -39,7 +38,6 @@ export async function GET() {
     .map(preset => ({
       id: preset.id,
       name: preset.name,
-      mode: preset.mode,
       taskType: preset.taskType,
       options: preset.options,
       updatedAt: preset.updatedAt,
@@ -69,7 +67,6 @@ export async function POST(req: Request) {
     const preset = await dataLayer.createPreset({
       userId,
       name: parsed.name,
-      mode: parsed.mode,
       taskType: parsed.taskType,
       options: parsed.options || {},
     });
@@ -114,7 +111,6 @@ export async function PUT(req: Request) {
     
     const updatedPreset = await dataLayer.updatePreset(parsed.id, {
       name: parsed.name,
-      mode: parsed.mode,
       taskType: parsed.taskType,
       options: parsed.options || {},
     });

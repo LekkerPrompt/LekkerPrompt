@@ -24,7 +24,6 @@ const OptionsSchema = z.object({
 const BodySchema = z.object({
   id: z.string().optional(),
   name: z.string().min(1).max(100),
-  mode: z.enum(["build", "enhance"]),
   taskType: z.enum(["general", "coding", "image", "research", "writing", "marketing"]),
   options: OptionsSchema.optional(),
 });
@@ -52,14 +51,14 @@ export async function POST(req: Request) {
 
   let preset;
   if (parsed.id) {
-    preset = await dataLayer.updatePreset(parsed.id, { ...parsed, options: parsed.options ?? {}, userId });
+    preset = await dataLayer.updatePreset(parsed.id!, { name: parsed.name, taskType: parsed.taskType, options: parsed.options ?? {}, userId });
   } else {
     const existingPresets = await dataLayer.findPresetsByUserId(userId);
     const existing = existingPresets.find(p => p.name === parsed.name);
     if (existing) {
-      preset = await dataLayer.updatePreset(existing.id, { ...parsed, options: parsed.options ?? {}, userId });
+      preset = await dataLayer.updatePreset(existing.id, { name: parsed.name, taskType: parsed.taskType, options: parsed.options ?? {}, userId });
     } else {
-      preset = await dataLayer.createPreset({ ...parsed, options: parsed.options ?? {}, userId });
+      preset = await dataLayer.createPreset({ name: parsed.name, taskType: parsed.taskType, options: parsed.options ?? {}, userId });
     }
   }
 
