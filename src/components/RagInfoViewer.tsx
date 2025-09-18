@@ -44,6 +44,7 @@ export default function RagInfoViewer() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'liked' | 'disliked' | 'custom'>('overview');
+  const [resetting, setResetting] = useState(false);
 
   const fetchRagInfo = useCallback(async () => {
     try {
@@ -84,11 +85,56 @@ export default function RagInfoViewer() {
     };
   }, [fetchRagInfo]);
 
+  // Reset RAG learning environment
+  const resetLearningEnvironment = useCallback(async () => {
+    if (!confirm('Reset the entire learning environment? This will remove all likes, dislikes, and custom environment data. This cannot be undone.')) {
+      return;
+    }
+    
+    setResetting(true);
+    try {
+      const response = await fetch('/api/admin/rag-reset', { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reset-all' })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to reset learning environment');
+      }
+      
+      // Refresh data after reset
+      await fetchRagInfo();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reset learning environment');
+    } finally {
+      setResetting(false);
+    }
+  }, [fetchRagInfo]);
+
+  // Remove specific feedback
+  const removeFeedback = useCallback(async (messageId: string, feedbackType: 'like' | 'dislike') => {
+    try {
+      const response = await fetch('/api/feedback', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId })
+      });
+      
+      if (response.ok) {
+        // Refresh data after removal
+        await fetchRagInfo();
+      }
+    } catch (err) {
+      setError('Failed to remove feedback');
+    }
+  }, [fetchRagInfo]);
+
   if (loading) {
     return (
-      <div className="p-6 bg-gray-900 text-gray-100 rounded-lg max-w-4xl mx-auto">
+      <div className="p-6 bg-surface-100 text-light rounded-lg max-w-4xl mx-auto">
         <div className="flex items-center justify-center">
-          <div className="text-sm text-gray-400">Loading RAG information...</div>
+          <div className="text-sm text-surface-400">Loading RAG information...</div>
         </div>
       </div>
     );
@@ -96,8 +142,8 @@ export default function RagInfoViewer() {
 
   if (error) {
     return (
-      <div className="p-6 bg-gray-900 text-gray-100 rounded-lg max-w-4xl mx-auto">
-        <div className="flex items-center gap-2 text-red-400">
+      <div className="p-6 bg-surface-100 text-light rounded-lg max-w-4xl mx-auto">
+        <div className="flex items-center gap-2 text-primary-a20">
           <span className="text-sm">⚠</span>
           <span className="text-sm">Error loading RAG information: {error}</span>
         </div>
@@ -127,30 +173,41 @@ export default function RagInfoViewer() {
   ] as const;
 
   return (
-    <div className="p-6 bg-gray-900 text-gray-100 rounded-lg max-w-4xl mx-auto">
-      <div className="mb-6">
-        <h2 className="text-xl font-semibold mb-2 flex items-center gap-2">
-          <Icon name="db" className="h-5 w-5" />
-          RAG System Information
-        </h2>
-        <div className="flex items-center gap-2">
-          <p className="text-sm text-gray-400 flex-1">
-            View your personalized learning data and custom environment settings (auto updating)
-          </p>
+    <div className="rag-container">
+      <div className="rag-header">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <h2 className="rag-title">
+              <Icon name="db" className="h-5 w-5" />
+              RAG System Information
+            </h2>
+            <p className="rag-subtitle">
+              View your personalized learning data and custom environment settings (auto updating)
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={resetLearningEnvironment}
+            disabled={resetting}
+            className="md-btn"
+            style={{ 
+              padding: '8px 12px',
+              opacity: resetting ? 0.6 : 1
+            }}
+            title="Reset entire learning environment"
+          >
+            {resetting ? 'Resetting...' : 'Reset All'}
+          </button>
         </div>
       </div>
 
       {/* Tab Navigation */}
-      <div className="flex space-x-1 mb-6 bg-gray-800/50 p-1 rounded-lg">
+      <div className="rag-tabs">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
-              activeTab === tab.id 
-                ? 'bg-gray-700 text-white' 
-                : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'
-            }`}
+            className={`rag-tab ${activeTab === tab.id ? 'rag-tab--active' : 'rag-tab--inactive'}`}
           >
             <Icon name={tab.icon} className="h-4 w-4" />
             {tab.label}
@@ -163,28 +220,28 @@ export default function RagInfoViewer() {
         {activeTab === 'overview' && (
           <div className="space-y-6">
             {/* Stats Overview */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-gray-800/50 p-4 rounded-lg">
-                <div className="text-2xl font-semibold text-blue-400">{data.stats.totalMessages}</div>
-                <div className="text-xs text-gray-400">Total Messages</div>
+            <div className="rag-stat-grid">
+              <div className="rag-stat-card">
+                <div className="rag-stat-value">{data.stats.totalMessages}</div>
+                <div className="rag-stat-label">Total Messages</div>
               </div>
-              <div className="bg-gray-800/50 p-4 rounded-lg">
-                <div className="text-2xl font-semibold text-green-400">{data.stats.likedCount}</div>
-                <div className="text-xs text-gray-400">Used for Learning (Liked)</div>
+              <div className="rag-stat-card">
+                <div className="rag-stat-value" style={{ color: '#10b981' }}>{data.stats.likedCount}</div>
+                <div className="rag-stat-label">Used for Learning (Liked)</div>
               </div>
-              <div className="bg-gray-800/50 p-4 rounded-lg">
-                <div className="text-2xl font-semibold text-red-400">{data.stats.dislikedCount}</div>
-                <div className="text-xs text-gray-400">Used for Learning (Disliked)</div>
+              <div className="rag-stat-card">
+                <div className="rag-stat-value" style={{ color: '#ef4444' }}>{data.stats.dislikedCount}</div>
+                <div className="rag-stat-label">Used for Learning (Disliked)</div>
               </div>
             </div>
             
             {/* Learning Info */}
-            <div className="bg-blue-900/20 border border-blue-700/30 p-4 rounded-lg">
-              <div className="flex items-start gap-3">
-                <Icon name="info" className="h-5 w-5 text-blue-400 mt-0.5 flex-shrink-0" />
+            <div className="rag-info-card">
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                <Icon name="info" className="h-5 w-5" style={{ color: 'var(--color-primary)', marginTop: 2, flexShrink: 0 }} />
                 <div>
-                  <h4 className="text-sm font-medium text-blue-300 mb-1">RAG Learning System</h4>
-                  <p className="text-sm text-gray-300">
+                  <h4 className="rag-section-title">RAG Learning System</h4>
+                  <p className="rag-section-text">
                     Only liked and disliked responses are used to build your personalized learning environment. 
                     Neutral feedback (no rating) means the message is stored but not used for learning preferences.
                     This applies to all models - local and API-based.
@@ -194,34 +251,34 @@ export default function RagInfoViewer() {
             </div>
 
             {/* How It Works */}
-            <div className="bg-gray-800/30 p-4 rounded-lg">
-              <h3 className="text-sm font-medium text-gray-300 mb-2">How It Works</h3>
-              <p className="text-sm text-gray-400 leading-relaxed">
+            <div className="rag-section-card">
+              <h3 className="rag-section-title">How It Works</h3>
+              <p className="rag-section-text">
                 {data.ragSystemDescription.howItWorks}
               </p>
             </div>
 
             {/* Data Stored */}
-            <div className="bg-gray-800/30 p-4 rounded-lg">
-              <h3 className="text-sm font-medium text-gray-300 mb-3">Data Stored Locally</h3>
-              <ul className="space-y-2">
+            <div className="rag-section-card">
+              <h3 className="rag-section-title">Data Stored Locally</h3>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {data.ragSystemDescription.dataStored.map((item, index) => (
-                  <li key={index} className="flex items-start gap-2 text-sm text-gray-400">
-                    <span className="text-green-500 mt-0.5 flex-shrink-0">✓</span>
-                    {item}
+                  <li key={index} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                    <span style={{ color: '#10b981', marginTop: 2, flexShrink: 0 }}>✓</span>
+                    <span className="rag-section-text">{item}</span>
                   </li>
                 ))}
               </ul>
             </div>
 
             {/* Benefits */}
-            <div className="bg-gray-800/30 p-4 rounded-lg">
-              <h3 className="text-sm font-medium text-gray-300 mb-3">Benefits</h3>
-              <ul className="space-y-2">
+            <div className="rag-section-card">
+              <h3 className="rag-section-title">Benefits</h3>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {data.ragSystemDescription.benefits.map((benefit, index) => (
-                  <li key={index} className="flex items-start gap-2 text-sm text-gray-400">
-                    <Icon name="star" className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
-                    {benefit}
+                  <li key={index} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                    <Icon name="star" className="h-4 w-4" style={{ color: 'var(--color-primary)', marginTop: 2, flexShrink: 0 }} />
+                    <span className="rag-section-text">{benefit}</span>
                   </li>
                 ))}
               </ul>
@@ -230,93 +287,116 @@ export default function RagInfoViewer() {
         )}
 
         {activeTab === 'liked' && (
-          <div className="space-y-3">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {data.likedMessages.length > 0 ? (
               data.likedMessages.map((message) => (
-                <div key={message.id} className="bg-gray-800/30 p-4 rounded-lg border-l-2 border-green-500">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-green-400 font-medium">{message.role.toUpperCase()}</span>
-                      <Icon name="thumbsUp" className="h-3 w-3 text-green-400" />
+                <div key={message.id} className="rag-message-card rag-message-card--liked">
+                  <div className="rag-message-header">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span className="rag-message-role rag-message-role--liked">{message.role.toUpperCase()}</span>
+                      <Icon name="thumbsUp" className="h-3 w-3" style={{ color: '#10b981' }} />
                     </div>
-                    <span className="text-xs text-gray-500">{formatDate(message.createdAt)}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span className="rag-message-date">{formatDate(message.createdAt)}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeFeedback(message.id, 'like')}
+                        className="md-btn"
+                        style={{ padding: '4px 8px', fontSize: 11 }}
+                        title="Remove like"
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
-                  <div className="text-sm text-gray-300 leading-relaxed">{message.content}</div>
-                  <div className="text-xs text-gray-500 mt-2">Chat ID: {message.chatId}</div>
+                  <div className="rag-message-content">{message.content}</div>
+                  <div className="rag-message-meta">Chat ID: {message.chatId}</div>
                 </div>
               ))
             ) : (
-              <div className="text-center py-8 text-gray-400">
-                <Icon name="thumbsUp" className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No liked messages yet</p>
-                <p className="text-xs mt-1">Start rating responses to see them here</p>
+              <div className="rag-empty">
+                <Icon name="thumbsUp" className="rag-empty-icon" />
+                <p className="rag-empty-title">No liked messages yet</p>
+                <p className="rag-empty-subtitle">Start rating responses to see them here</p>
               </div>
             )}
           </div>
         )}
 
         {activeTab === 'disliked' && (
-          <div className="space-y-3">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {data.dislikedMessages.length > 0 ? (
               data.dislikedMessages.map((message) => (
-                <div key={message.id} className="bg-gray-800/30 p-4 rounded-lg border-l-2 border-red-500">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-red-400 font-medium">{message.role.toUpperCase()}</span>
-                      <Icon name="thumbsDown" className="h-3 w-3 text-red-400" />
+                <div key={message.id} className="rag-message-card rag-message-card--disliked">
+                  <div className="rag-message-header">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span className="rag-message-role rag-message-role--disliked">{message.role.toUpperCase()}</span>
+                      <Icon name="thumbsDown" className="h-3 w-3" style={{ color: '#ef4444' }} />
                     </div>
-                    <span className="text-xs text-gray-500">{formatDate(message.createdAt)}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span className="rag-message-date">{formatDate(message.createdAt)}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeFeedback(message.id, 'dislike')}
+                        className="md-btn"
+                        style={{ padding: '4px 8px', fontSize: 11 }}
+                        title="Remove dislike"
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
-                  <div className="text-sm text-gray-300 leading-relaxed">{message.content}</div>
-                  <div className="text-xs text-gray-500 mt-2">Chat ID: {message.chatId}</div>
+                  <div className="rag-message-content">{message.content}</div>
+                  <div className="rag-message-meta">Chat ID: {message.chatId}</div>
                 </div>
               ))
             ) : (
-              <div className="text-center py-8 text-gray-400">
-                <Icon name="thumbsDown" className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No disliked messages yet</p>
-                <p className="text-xs mt-1">Disliked content helps improve future suggestions</p>
+              <div className="rag-empty">
+                <Icon name="thumbsDown" className="rag-empty-icon" />
+                <p className="rag-empty-title">No disliked messages yet</p>
+                <p className="rag-empty-subtitle">Disliked content helps improve future suggestions</p>
               </div>
             )}
           </div>
         )}
 
         {activeTab === 'custom' && (
-          <div className="space-y-4">
-            <div className="bg-gray-800/30 p-4 rounded-lg">
-              <h3 className="text-sm font-medium text-gray-300 mb-2">Custom Environment</h3>
-              <p className="text-sm text-gray-400 mb-4">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="rag-section-card">
+              <h3 className="rag-section-title">Custom Environment</h3>
+              <p className="rag-section-text">
                 Based on your explicit feedback (likes/dislikes only), PromptCrafter has built a custom environment that influences future suggestions across ALL models. 
                 Neutral responses are stored but don't contribute to learning. Here's a sample of what the system considers when providing personalized recommendations:
               </p>
             </div>
             
             {data.customEnvironmentInfo.length > 0 ? (
-              <div className="space-y-3">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {data.customEnvironmentInfo.map((info, index) => (
-                  <div key={index} className="bg-gray-800/30 p-4 rounded-lg">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-blue-400 font-medium">RECOMMENDATION</span>
+                  <div key={index} className="rag-message-card">
+                    <div className="rag-message-header">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span className="rag-message-role" style={{ color: 'var(--color-primary)' }}>RECOMMENDATION</span>
                         {info.feedback && (
                           <Icon 
                             name={info.feedback === 'like' ? 'thumbsUp' : 'thumbsDown'} 
-                            className={`h-3 w-3 ${info.feedback === 'like' ? 'text-green-400' : 'text-red-400'}`} 
+                            className="h-3 w-3"
+                            style={{ color: info.feedback === 'like' ? '#10b981' : '#ef4444' }}
                           />
                         )}
                       </div>
-                      <span className="text-xs text-gray-500">Relevance: {(info.score * 100).toFixed(1)}%</span>
+                      <span className="rag-message-date">Relevance: {(info.score * 100).toFixed(1)}%</span>
                     </div>
-                    <div className="text-sm text-gray-300 leading-relaxed">{info.content}</div>
-                    <div className="text-xs text-gray-500 mt-2">Source: {info.role} message</div>
+                    <div className="rag-message-content">{info.content}</div>
+                    <div className="rag-message-meta">Source: {info.role} message</div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8 text-gray-400">
-                <Icon name="gear" className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No custom environment built yet</p>
-                <p className="text-xs mt-1">Rate more messages to help build your personalized environment</p>
+              <div className="rag-empty">
+                <Icon name="gear" className="rag-empty-icon" />
+                <p className="rag-empty-title">No custom environment built yet</p>
+                <p className="rag-empty-subtitle">Rate more messages to help build your personalized environment</p>
               </div>
             )}
           </div>

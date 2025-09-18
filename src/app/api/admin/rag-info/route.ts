@@ -6,29 +6,30 @@ export async function GET() {
     // Get user feedback stats
     const stats = await dataLayer.getUserFeedbackStats();
     
-    // Get recent liked and disliked messages for display
-    const personalizedSuggestions = await dataLayer.getPersonalizedPromptSuggestions('', 'local-user');
-    const likedMessages = personalizedSuggestions
-      .filter(s => s.message.userFeedback === 'like')
-      .map(s => ({
-        id: s.message.id,
-        content: s.message.content.length > 150 ? s.message.content.substring(0, 150) + '...' : s.message.content,
-        role: s.message.role,
-        createdAt: s.message.createdAt,
-        chatId: s.message.chatId
+    // Get all messages with feedback directly from the data layer
+    const allMessages = await dataLayer.getAllMessagesWithFeedback();
+    
+    const likedMessages = allMessages
+      .filter(m => m.userFeedback === 'like')
+      .map(m => ({
+        id: m.id,
+        content: m.content.length > 150 ? m.content.substring(0, 150) + '...' : m.content,
+        role: m.role,
+        createdAt: typeof m.createdAt === 'string' ? new Date(m.createdAt).getTime() : m.createdAt.getTime(),
+        chatId: m.chatId
       }))
-      .slice(0, 10); // Show up to 10 recent liked messages
+      .slice(0, 10);
 
-    const dislikedMessages = personalizedSuggestions
-      .filter(s => s.message.userFeedback === 'dislike')
-      .map(s => ({
-        id: s.message.id,
-        content: s.message.content.length > 150 ? s.message.content.substring(0, 150) + '...' : s.message.content,
-        role: s.message.role,
-        createdAt: s.message.createdAt,
-        chatId: s.message.chatId
+    const dislikedMessages = allMessages
+      .filter(m => m.userFeedback === 'dislike')
+      .map(m => ({
+        id: m.id,
+        content: m.content.length > 150 ? m.content.substring(0, 150) + '...' : m.content,
+        role: m.role,
+        createdAt: typeof m.createdAt === 'string' ? new Date(m.createdAt).getTime() : m.createdAt.getTime(),
+        chatId: m.chatId
       }))
-      .slice(0, 10); // Show up to 10 recent disliked messages
+      .slice(0, 10);
 
     // Get sample personalized recommendations to show how the system works
     // Only include messages with feedback (like/dislike) since neutral feedback isn't used for learning
