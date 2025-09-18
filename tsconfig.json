@@ -13,6 +13,12 @@
 		/* Strictness */
 		"strict": true,
 		"noUncheckedIndexedAccess": true,
+		"noImplicitOverride": true,
+		"noImplicitReturns": true,
+		"noImplicitAny": true,
+		"noImplicitThis": true,
+		"noFallthroughCasesInSwitch": true,
+		"exactOptionalPropertyTypes": true,
 		"checkJs": true,
 
 		/* Bundled projects */
@@ -23,8 +29,7 @@
 		"jsx": "preserve",
 		"plugins": [{ "name": "next" }],
 		"incremental": true,
-		"types": ["node"],
-
+		
 		/* Path Aliases */
 		"baseUrl": ".",
 		"paths": {
