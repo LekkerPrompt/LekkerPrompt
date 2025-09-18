@@ -8,6 +8,14 @@ const http = require('http');
 let nextServerPort = null;
 let dataDirPath = null; // resolved chosen data directory
 const CONFIG_FILENAME = 'promptcrafter-config.json';
+let pendingDataDirInfo = null; // one-time info message to show after window creation
+
+// Ensure a stable userData path labeled "PromptCrafter" in dev and prod so
+// both Electron and the Next.js dev server read the same config file location.
+try {
+  const desiredUserData = path.join(app.getPath('appData'), 'PromptCrafter');
+  app.setPath('userData', desiredUserData);
+} catch (_) { /* ignore */ }
 
 function getConfigPath() {
   return path.join(app.getPath('userData'), CONFIG_FILENAME);
@@ -34,27 +42,78 @@ function saveConfig(cfg) {
 // because packaged builds often don't set NODE_ENV.
 const isDev = !app.isPackaged;
 
-// Load persisted config early - but don't set default data directory automatically
+// Load or create data directory: default to Documents/PromptCrafter for all OS
 const cfg = loadConfig();
-if (cfg.dataDir) {
-  dataDirPath = cfg.dataDir;
-  // Ensure directory exists
-  try { fs.mkdirSync(dataDirPath, { recursive: true }); } catch (e) { /* ignore */ }
-  // Set DATA_DIR so backend uses chosen directory for JSON/vector storage
-  process.env.DATA_DIR = dataDirPath;
-}
-// If no dataDir is configured, we'll prompt the user before setting DATA_DIR
-if (!isDev && !dataDirPath) {
+
+// Expose userData path to renderer/server processes for unified config resolution
+try { process.env.PROMPTCRAFTER_USER_DATA_DIR = app.getPath('userData'); } catch(_) {}
+
+function getDefaultDataDir() {
   try {
-    const fallback = path.join(app.getPath('userData'), 'data');
-    fs.mkdirSync(fallback, { recursive: true });
-    dataDirPath = fallback;
-    process.env.DATA_DIR = dataDirPath;
-    console.log('[Electron] No persisted dataDir. Using fallback at', fallback);
-  } catch (e) {
-    console.warn('[Electron] Failed to create fallback data directory', e);
+    const docs = app.getPath('documents');
+    return path.join(docs, 'PromptCrafter');
+  } catch (_) {
+    // Last resort if documents is unavailable
+    return path.join(app.getPath('userData'), 'PromptCrafter');
   }
 }
+
+function ensureDirWritable(dir) {
+  try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
+  return canWriteToDir(dir);
+}
+
+function resolveAndPersistDataDirInternal() {
+  try {
+    const configured = cfg.dataDir;
+    if (configured) {
+      if (ensureDirWritable(configured)) {
+        dataDirPath = configured;
+      } else {
+        const fallback = getDefaultDataDir();
+        if (ensureDirWritable(fallback)) {
+          dataDirPath = fallback;
+          cfg.dataDir = fallback;
+          saveConfig(cfg);
+          pendingDataDirInfo = `Data folder was missing or not writable. Using default at: ${fallback}`;
+        } else {
+          const lastResort = path.join(app.getPath('userData'), 'PromptCrafter');
+          if (ensureDirWritable(lastResort)) {
+            dataDirPath = lastResort;
+            cfg.dataDir = lastResort;
+            saveConfig(cfg);
+            pendingDataDirInfo = `Data folder was not writable. Using app data at: ${lastResort}`;
+          }
+        }
+      }
+    } else {
+      const fallback = getDefaultDataDir();
+      if (ensureDirWritable(fallback)) {
+        dataDirPath = fallback;
+        cfg.dataDir = fallback;
+        saveConfig(cfg);
+        pendingDataDirInfo = `Created data folder at: ${fallback}`;
+      } else {
+        const lastResort = path.join(app.getPath('userData'), 'PromptCrafter');
+        if (ensureDirWritable(lastResort)) {
+          dataDirPath = lastResort;
+          cfg.dataDir = lastResort;
+          saveConfig(cfg);
+          pendingDataDirInfo = `Created data folder at: ${lastResort}`;
+        }
+      }
+    }
+    if (dataDirPath) {
+      // Expose for any backend code that reads env, but we do not rely on this
+      process.env.DATA_DIR = dataDirPath;
+    }
+  } catch (e) {
+    console.warn('[Electron] Failed to resolve data directory', e);
+  }
+  return dataDirPath;
+}
+
+resolveAndPersistDataDirInternal();
 
 // Utility: attempt write/delete test file to confirm directory is writable
 function canWriteToDir(dir) {
@@ -86,12 +145,22 @@ function checkAndOptionallyClearZoneIdentifier() {
 }
 
 // Register IPC handlers early - before app.whenReady() to ensure they're available immediately
-ipcMain.handle('promptcrafter:getConfig', () => ({ dataDir: dataDirPath }));
+ipcMain.handle('promptcrafter:getConfig', () => {
+  try {
+    return { dataDir: dataDirPath };
+  } catch (e) {
+    return { dataDir: null };
+  }
+});
 ipcMain.handle('promptcrafter:isDbConfigured', () => {
-  const cfg = loadConfig();
-  const dir = cfg.dataDir || dataDirPath;
-  const writable = !!dir && canWriteToDir(dir);
-  return { configured: !!(dir && writable), writable, dataDir: dir };
+  try {
+    const cfg = loadConfig();
+    const dir = cfg.dataDir || dataDirPath;
+    const writable = !!dir && canWriteToDir(dir);
+    return { configured: !!(dir && writable), writable, dataDir: dir };
+  } catch (e) {
+    return { configured: false, error: e?.message || 'unknown', writable: false };
+  }
 });
 ipcMain.handle('promptcrafter:getDbInfo', () => {
   try {
@@ -155,19 +224,22 @@ ipcMain.handle('promptcrafter:restartApp', () => {
   }
 });
 ipcMain.handle('promptcrafter:chooseDataDir', async () => {
-  const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
-  if (result.canceled || !result.filePaths?.[0]) return { ok: false };
-  const selected = result.filePaths[0];
-  try { fs.mkdirSync(selected, { recursive: true }); } catch (e) {}
-  if (!canWriteToDir(selected)) {
-    return { ok: false, error: 'Selected folder is not writable. Choose another location (avoid Downloads or protected folders).' };
+  try {
+    const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
+    if (result.canceled || !result.filePaths?.[0]) return { ok: false };
+    const selected = result.filePaths[0];
+    try { fs.mkdirSync(selected, { recursive: true }); } catch (e) {}
+    if (!canWriteToDir(selected)) {
+      return { ok: false, error: 'Selected folder is not writable. Choose another location (avoid Downloads or protected folders).' };
+    }
+    const cfg2 = loadConfig();
+    cfg2.dataDir = selected;
+    saveConfig(cfg2);
+    dataDirPath = selected;
+    return { ok: true, dataDir: dataDirPath };
+  } catch (e) {
+    return { ok: false, error: e?.message || 'Failed to select directory' };
   }
-  const cfg2 = loadConfig();
-  cfg2.dataDir = selected;
-  saveConfig(cfg2);
-  dataDirPath = selected;
-  // Legacy DATABASE_URL removed; storage now uses DATA_DIR environment variable only.
-  return { ok: true, dataDir: dataDirPath };
 });
 ipcMain.handle('promptcrafter:getEnvSafety', () => {
   const execPath = process.execPath;
@@ -176,12 +248,28 @@ ipcMain.handle('promptcrafter:getEnvSafety', () => {
   return { execPath, inDownloads, zoneIdentifierPresent: zone.zoneIdentifierPresent, zoneRemoved: zone.removed };
 });
 
+// Window controls for custom frameless UI
+ipcMain.handle('promptcrafter:window:minimize', (e) => {
+  const w = BrowserWindow.fromWebContents(e.sender);
+  if (w) w.minimize();
+});
+ipcMain.handle('promptcrafter:window:maximizeToggle', (e) => {
+  const w = BrowserWindow.fromWebContents(e.sender);
+  if (!w) return;
+  if (w.isMaximized()) w.unmaximize(); else w.maximize();
+});
+ipcMain.handle('promptcrafter:window:close', (e) => {
+  const w = BrowserWindow.fromWebContents(e.sender);
+  if (w) w.close();
+});
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
     height: 900,
     minWidth: 600,
     minHeight: 800,
+    ...(process.platform === 'darwin' ? { frame: false } : {}),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -220,6 +308,16 @@ function createWindow() {
         };
       })();
     `);
+    try {
+      if (pendingDataDirInfo) {
+        dialog.showMessageBox(win, {
+          type: 'info',
+          title: 'Data Folder Initialized',
+          message: pendingDataDirInfo,
+        }).catch(() => {});
+        pendingDataDirInfo = null;
+      }
+    } catch (_) { /* ignore */ }
   });
 
   // Basic spellchecker language setup (can be expanded later)
@@ -297,6 +395,21 @@ function createWindow() {
           }
         }
       ]
+    });
+
+    // Developer tools entries
+    template.push({ type: 'separator' });
+    template.push({
+      label: 'Inspect Element',
+      click: () => {
+        try { win.webContents.inspectElement(params.x, params.y); } catch(_) {}
+      }
+    });
+    template.push({
+      label: 'Open DevTools',
+      click: () => {
+        try { win.webContents.openDevTools({ mode: 'detach' }); } catch(_) {}
+      }
     });
 
     const contextMenu = Menu.buildFromTemplate(template);
@@ -397,17 +510,33 @@ app.whenReady().then(async () => {
     console.warn('[Electron] Failed to set custom menu:', e);
   }
   
-  // Disable CSP in dev to allow Next.js hot reload inside Electron
-  if (isDev) {
-  /** @param {any} details @param {any} cb */
+  // Secure CSP configuration for both dev and production
+  const cspPolicy = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:* https://localhost:*",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data: blob: https: http:",
+    "connect-src 'self' http://localhost:* https://localhost:* https://fonts.googleapis.com https://fonts.gstatic.com",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'"
+  ].join('; ');
+
   session.defaultSession.webRequest.onHeadersReceived((details, cb) => {
-      cb({
-        responseHeaders: {
-          ...details.responseHeaders,
-          'Content-Security-Policy': ["default-src * 'unsafe-inline' 'unsafe-eval' data: blob:"]
-        }
-      });
+    cb({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [cspPolicy],
+        'X-Content-Type-Options': ['nosniff'],
+        'X-Frame-Options': ['DENY'],
+        'X-XSS-Protection': ['1; mode=block']
+      }
     });
+  });
+
+  if (isDev) {
     createWindow(); // Create window immediately in dev mode
   } else {
     // Production: start embedded Next.js server (needed for dynamic routes like NextAuth)
@@ -416,11 +545,17 @@ app.whenReady().then(async () => {
     try {
   console.log('[Electron] Starting embedded Next.js server (packaged). __dirname=', __dirname, 'node', process.version, 'platform', process.platform, 'electron', process.versions.electron);
       let appDir = path.join(__dirname, '..');
-      // If inside asar, adjust (Electron unpacks app.asar automatically for fs reads)
-      if (appDir.includes('app.asar')) {
-        console.log('[Electron] Detected asar packaging path');
-      }
-      const nextDir = path.join(appDir, '.next');
+      // Determine the correct application directory that contains .next when packaged
+      const resourcesDir = process.resourcesPath || path.join(__dirname, '..', '..');
+      const unpackedDir = path.join(resourcesDir, 'app.asar.unpacked');
+      const candidateDirs = [
+        unpackedDir,
+        appDir
+      ];
+      let nextAppDir = candidateDirs.find(d => {
+        try { return fs.existsSync(path.join(d, '.next')); } catch (_) { return false; }
+      }) || appDir;
+      const nextDir = path.join(nextAppDir, '.next');
       if (!fs.existsSync(nextDir)) {
         console.warn('[Electron] .next directory missing at', nextDir);
       } else {
@@ -429,23 +564,39 @@ app.whenReady().then(async () => {
           console.log('[Electron] .next contents sample:', files);
         } catch (e) { console.warn('[Electron] Could not list .next contents', e); }
       }
+      try { process.chdir(nextAppDir); } catch(_) {}
+      // Robustly resolve Next factory from packaged node_modules
       let nextFactory = null;
-      try {
-        nextFactory = require('next');
-      } catch (eReq) {
-        console.error('[Electron] Failed to require("next") direct, attempting dist path', eReq?.stack || eReq);
+      const nextCandidates = [
+        path.join(unpackedDir, 'node_modules', 'next', 'dist', 'server', 'next.js'),
+        path.join(nextAppDir, 'node_modules', 'next', 'dist', 'server', 'next.js')
+      ];
+      for (const p of nextCandidates) {
         try {
-          const alt = require('next/dist/server/next');
-          nextFactory = typeof alt === 'function' ? alt : (typeof alt.default === 'function' ? alt.default : alt.next || alt.default?.next);
-        } catch (eAlt) {
-          console.error('[Electron] Secondary require attempt failed', eAlt?.stack || eAlt);
-          throw eReq;
+          if (fs.existsSync(p)) {
+            // eslint-disable-next-line import/no-dynamic-require, global-require
+            const mod = require(p);
+            nextFactory = typeof mod === 'function' ? mod : (typeof mod.default === 'function' ? mod.default : mod.next || mod.default?.next);
+            break;
+          }
+        } catch (_) { /* ignore and continue */ }
+      }
+      if (!nextFactory) {
+        try { nextFactory = require('next'); } catch (eReq) {
+          console.error('[Electron] Failed to require("next") direct, attempting dist path', eReq?.stack || eReq);
+          try {
+            const alt = require('next/dist/server/next');
+            nextFactory = typeof alt === 'function' ? alt : (typeof alt.default === 'function' ? alt.default : alt.next || alt.default?.next);
+          } catch (eAlt) {
+            console.error('[Electron] Secondary require attempt failed', eAlt?.stack || eAlt);
+            throw eReq;
+          }
         }
       }
       if (typeof nextFactory !== 'function') {
         throw new Error('Resolved Next factory is not a function: type=' + typeof nextFactory);
       }
-      const nextApp = nextFactory({ dev: false, dir: appDir });
+      const nextApp = nextFactory({ dev: false, dir: nextAppDir });
       await nextApp.prepare();
       console.log('[Electron] Next.js prepared. Creating HTTP server...');
       const handle = nextApp.getRequestHandler();
@@ -464,10 +615,14 @@ app.whenReady().then(async () => {
         fs.writeFileSync(errPath, `Error starting server:\n${e?.stack || e}`);
         wrote = true;
       } catch(_) { /* ignore */ }
-      // Attempt static fallback: serve pre-rendered /chat if available
+      // Attempt static fallback: serve pre-rendered HTML if available
       try {
-        const fallbackHtml = path.join(__dirname, '..', '.next', 'server', 'app', 'chat', 'index.html');
-        if (fs.existsSync(fallbackHtml)) {
+        const htmlCandidates = [
+          path.join(nextAppDir, '.next', 'server', 'app', 'chat', 'index.html'),
+          path.join(nextAppDir, '.next', 'server', 'app', 'index.html')
+        ];
+        const fallbackHtml = htmlCandidates.find(p => { try { return fs.existsSync(p); } catch(_) { return false; } });
+        if (fallbackHtml) {
           console.log('[Electron] Using static fallback HTML');
           const staticServer = http.createServer((req, res) => {
             fs.createReadStream(fallbackHtml).pipe(res);
@@ -492,5 +647,5 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  app.quit();
 });

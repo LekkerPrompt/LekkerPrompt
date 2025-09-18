@@ -7,6 +7,14 @@ contextBridge.exposeInMainWorld('promptcrafter', {
 	chooseDataDir: () => ipcRenderer.invoke('promptcrafter:chooseDataDir'),
 	getDbInfo: () => ipcRenderer.invoke('promptcrafter:getDbInfo'),
 	resetDataDir: () => ipcRenderer.invoke('promptcrafter:resetDataDir')
-,
+	,
+	getEnvSafety: () => ipcRenderer.invoke('promptcrafter:getEnvSafety')
+	,
 	restartApp: () => ipcRenderer.invoke('promptcrafter:restartApp')
+	,
+	window: {
+		minimize: () => ipcRenderer.invoke('promptcrafter:window:minimize'),
+		maximizeToggle: () => ipcRenderer.invoke('promptcrafter:window:maximizeToggle'),
+		close: () => ipcRenderer.invoke('promptcrafter:window:close')
+	}
 });

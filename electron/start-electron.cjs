@@ -1,15 +1,17 @@
 #!/usr/bin/env node
+// @ts-nocheck
 // Starts Next.js dev (or prod) then launches Electron.
 const { spawn } = require('child_process');
 const path = require('path');
 
 const isProd = process.argv.includes('--prod');
 
+
 /** Start Next.js (dev or prod) without relying on spawning npm directly. */
 /** @returns {Promise<void>} */
 function startNext() {
   return new Promise((resolve, reject) => {
-    const env = { ...process.env, ELECTRON: '1' };
+    const env = { ...process.env, ELECTRON: '1', NEXT_PUBLIC_ELECTRON: '1' };
     if (!isProd) {
       // Dev: run `next dev --turbo` via Node directly.
       let nextBin;
@@ -52,6 +54,6 @@ function startNext() {
   await startNext();
   const electronModule = require('electron');
   const electronCmd = typeof electronModule === 'string' ? electronModule : 'electron';
-  const proc = spawn(electronCmd, [path.join(__dirname, 'main.cjs')], { stdio: 'inherit', env: { ...process.env, ELECTRON: '1' } });
+  const proc = spawn(electronCmd, [path.join(__dirname, 'main.cjs')], { stdio: 'inherit', env: { ...process.env, ELECTRON: '1', NEXT_PUBLIC_ELECTRON: '1' } });
   proc.on('exit', (code) => process.exit(code ?? 0));
 })();
