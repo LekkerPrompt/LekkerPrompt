@@ -169,15 +169,23 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         aria-expanded={isOpen}
         aria-label={ariaLabel}
         title={title}
-        className={`
-          w-full text-left flex items-center justify-between
-          rounded-md border border-gray-700 bg-gray-800/50 px-3 py-2 text-sm text-gray-200
-          transition hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500
-          disabled:opacity-50 disabled:cursor-not-allowed
-          ${className}
-        `}
+        className={`md-select ${className}`}
+        style={{
+          width: '100%',
+          textAlign: 'left',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          background: 'var(--color-surface-variant)',
+          color: 'var(--color-on-surface)',
+          border: '1px solid var(--color-outline)',
+          borderRadius: '8px',
+          padding: '8px 12px',
+          fontSize: '14px',
+          boxShadow: 'var(--shadow-1)'
+        }}
       >
-        <span className={selectedOption ? "text-gray-200" : "text-gray-400"}>
+        <span className={selectedOption ? "" : "opacity-80"}>
           {displayText}
         </span>
         <svg 
@@ -214,11 +222,13 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                   selectOption(option.value);
                 }
               }}
-              className={`
-                menu-item text-left block w-full
-                ${option.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-                ${option.value === value ? 'bg-gray-700' : ''}
-              `}
+              className="menu-item"
+              style={{
+                opacity: option.disabled ? 0.5 : 1,
+                cursor: option.disabled ? 'not-allowed' : 'pointer',
+                background: option.value === value ? 'var(--color-primary)' : 'transparent',
+                color: option.value === value ? 'var(--color-on-primary)' : 'var(--color-on-surface)'
+              }}
               role="menuitem"
               disabled={option.disabled}
             >

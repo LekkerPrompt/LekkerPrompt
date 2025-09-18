@@ -164,14 +164,14 @@ export default function DatabaseSetupGate({ children }: Props) {
     // If configured but not writable (edge case), force re-selection overlay
     if (writable === false) {
       return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950">
-          <div className="w-full max-w-lg rounded-xl border border-red-500/30 bg-gray-900 p-6 text-gray-100 shadow-2xl">
-            <h1 className="mb-3 text-2xl font-semibold text-red-300">Database Folder Not Writable</h1>
-            <p className="text-sm mb-4 text-gray-300">The selected data folder can't be written to. Choose a different location (avoid Downloads, Program Files, or read-only folders).</p>
-            {envWarning && <div className="mb-4 rounded border border-amber-500/40 bg-amber-900/30 p-3 text-xs text-amber-200 whitespace-pre-line">{envWarning}</div>}
-            {error && <div className="mb-4 rounded border border-red-500/40 bg-red-900/30 p-3 text-xs text-red-300">{error}</div>}
+        <div className="fixed inset-0 z-50 flex items-center justify-center modal-backdrop-blur">
+          <div className="w-full max-w-lg rounded-xl border border-primary-a20/40 bg-surface-100 p-6 text-light shadow-2xl">
+            <h1 className="mb-3 text-2xl font-semibold text-primary-a20">Database Folder Not Writable</h1>
+            <p className="text-sm mb-4 text-surface-300">The selected data folder can't be written to. Choose a different location (avoid Downloads, Program Files, or read-only folders).</p>
+            {envWarning && <div className="mb-4 rounded border border-accentA0/40 bg-accentA0/20 p-3 text-xs text-accentA0 whitespace-pre-line">{envWarning}</div>}
+            {error && <div className="mb-4 rounded border border-primary-a20/40 bg-primary-a20/20 p-3 text-xs text-primary-a20">{error}</div>}
             <div className="flex justify-center">
-              <button onClick={handleChooseDirectory} disabled={selecting} className="rounded-md bg-indigo-600 px-6 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed">{selecting ? 'Selecting Folder…' : 'Choose Different Folder'}</button>
+              <button onClick={handleChooseDirectory} disabled={selecting} className="rounded-md bg-primary px-6 py-3 text-sm font-semibold text-light hover:bg-primary-a10 disabled:opacity-60 disabled:cursor-not-allowed">{selecting ? 'Selecting Folder…' : 'Choose Different Folder'}</button>
             </div>
           </div>
         </div>
@@ -182,27 +182,27 @@ export default function DatabaseSetupGate({ children }: Props) {
 
   // Show the database setup UI
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950">
+    <div className="fixed inset-0 z-50 flex items-center justify-center modal-backdrop-blur">
       {checking && !loadedOnce ? (
         <div className="text-center">
-          <div className="text-gray-200 text-sm mb-2">Checking database configuration…</div>
-          <div className="text-gray-500 text-xs">Please wait while we verify your setup…</div>
+          <div className="text-surface-200 text-sm mb-2">Checking database configuration…</div>
+          <div className="text-surface-500 text-xs">Please wait while we verify your setup…</div>
         </div>
       ) : (
-        <div className="w-full max-w-lg rounded-xl border border-white/10 bg-gray-900 p-6 text-gray-100 shadow-2xl">
+        <div className="w-full max-w-lg rounded-xl border border-surface-400/30 bg-surface-100 p-6 text-light shadow-2xl">
           <div className="mb-6 text-center">
             <h1 className="mb-2 text-2xl font-semibold">Welcome to PromptCrafter</h1>
-            <p className="text-sm text-gray-300">Let's set up your database location</p>
+            <p className="text-sm text-surface-300">Let's set up your database location</p>
           </div>
           
           <div className="mb-6 space-y-4">
-            <div className="rounded-lg border border-blue-500/30 bg-blue-900/20 p-4">
-              <h3 className="mb-2 text-sm font-medium text-blue-200">📂 Choose Your Data Location</h3>
-              <p className="mb-3 text-xs text-blue-300 leading-relaxed">
-                PromptCrafter stores your chats, presets, and settings in a local SQLite database. 
+            <div className="rounded-lg border border-primary-300/40 bg-primary-300/20 p-4">
+              <h3 className="mb-2 text-sm font-medium text-primary-300">📂 Choose Your Data Location</h3>
+              <p className="mb-3 text-xs text-primary-300 leading-relaxed">
+                PromptCrafter stores your chats, presets, and settings as local JSON data and a vector index. 
                 Choose where you'd like this data to be saved.
               </p>
-              <ul className="text-xs text-blue-300 space-y-1 ml-4 list-disc">
+              <ul className="text-xs text-primary-300 space-y-1 ml-4 list-disc">
                 <li>Pick any folder on your computer</li>
                 <li>The database file will be created automatically</li>
                 <li>You can move this location later if needed</li>
@@ -210,23 +210,23 @@ export default function DatabaseSetupGate({ children }: Props) {
               </ul>
             </div>
             
-            <div className="rounded-lg border border-amber-500/30 bg-amber-900/20 p-4">
-              <h3 className="mb-2 text-sm font-medium text-amber-200">💡 Recommended Locations</h3>
-              <ul className="text-xs text-amber-300 space-y-1 ml-4 list-disc">
+            <div className="rounded-lg border border-accentA0/40 bg-accentA0/20 p-4">
+              <h3 className="mb-2 text-sm font-medium text-accentA0">💡 Recommended Locations</h3>
+              <ul className="text-xs text-accentA0 space-y-1 ml-4 list-disc">
                 <li><strong>Documents folder:</strong> Easy to find and backup</li>
                 <li><strong>Dedicated folder:</strong> Create "PromptCrafter Data" somewhere convenient</li>
                 <li><strong>Cloud sync folder:</strong> Sync across devices (Dropbox, OneDrive, etc.)</li>
               </ul>
             </div>
             {envWarning && (
-              <div className="rounded-lg border border-amber-400/30 bg-amber-800/30 p-4 text-xs text-amber-200 whitespace-pre-line">
+              <div className="rounded-lg border border-accentA0/40 bg-accentA0/25 p-4 text-xs text-accentA0 whitespace-pre-line">
                 {envWarning}
               </div>
             )}
           </div>
 
           {error && (
-            <div className="mb-4 rounded border border-red-500/40 bg-red-900/30 px-3 py-2 text-xs text-red-300">
+            <div className="mb-4 rounded border border-primary-a20/40 bg-primary-a20/20 px-3 py-2 text-xs text-primary-a20">
               <details>
                 <summary className="cursor-pointer">Error Details</summary>
                 <div className="mt-2 text-xs">
@@ -247,13 +247,13 @@ export default function DatabaseSetupGate({ children }: Props) {
             <button 
               onClick={handleChooseDirectory}
               disabled={selecting}
-              className="rounded-md bg-indigo-600 px-6 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="rounded-md bg-primary px-6 py-3 text-sm font-semibold text-light hover:bg-primary-a10 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {selecting ? 'Selecting Folder…' : '📂 Choose Database Location'}
             </button>
           </div>
           
-          <p className="mt-4 text-center text-xs text-gray-500">
+          <p className="mt-4 text-center text-xs text-surface-500">
             This setup only happens once. You can change the location later from the settings.
           </p>
         </div>

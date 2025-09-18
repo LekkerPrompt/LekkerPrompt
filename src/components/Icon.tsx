@@ -14,6 +14,14 @@ import {
   faBars,
   faThumbsUp,
   faThumbsDown,
+  faMinus,
+  faUpRightAndDownLeftFromCenter,
+  faChevronDown,
+  faRotateRight,
+  faPalette,
+  faCopy,
+  faCheck,
+  faSquare,
 } from "@fortawesome/free-solid-svg-icons";
 
 const icons = {
@@ -29,10 +37,18 @@ const icons = {
   bars: faBars,
   thumbsUp: faThumbsUp,
   thumbsDown: faThumbsDown,
+  minus: faMinus,
+  expand: faUpRightAndDownLeftFromCenter,
+  chevronDown: faChevronDown,
+  refresh: faRotateRight,
+  palette: faPalette,
+  copy: faCopy,
+  check: faCheck,
+  stop: faSquare,
 } as const;
 
 export type IconName = keyof typeof icons;
 
-export const Icon: React.FC<{ name: IconName; className?: string; title?: string }> = ({ name, className, title }) => (
-  <FontAwesomeIcon icon={icons[name]} className={className} title={title} />
+export const Icon: React.FC<{ name: IconName; className?: string; title?: string; style?: React.CSSProperties }> = ({ name, className, title, style }) => (
+  <FontAwesomeIcon icon={icons[name]} className={className} title={title} style={style} />
 );
