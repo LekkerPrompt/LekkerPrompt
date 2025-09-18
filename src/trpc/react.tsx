@@ -45,7 +45,7 @@ export function TRPCReactProvider(props: { children: React.ReactNode }) {
 		api.createClient({
 			links: [
 				loggerLink({
-					enabled: (op) =>
+					enabled: (op: { direction: "up" | "down"; result?: unknown }) =>
 						process.env.NODE_ENV === "development" ||
 						(op.direction === "down" && op.result instanceof Error),
 				}),
