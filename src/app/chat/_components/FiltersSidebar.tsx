@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import { api } from "@/trpc/react";
 import { CustomSelect } from "@/components/CustomSelect";
 import RagInfoViewer from "@/components/RagInfoViewer";
+import ThemeSwitcher from "@/components/ThemeSwitcher";
 
 type Mode = "build" | "enhance";
 type TaskType = "general" | "coding" | "image" | "research" | "writing" | "marketing";
@@ -14,15 +15,14 @@ type Detail = "brief" | "normal" | "detailed";
 type Format = "plain" | "markdown" | "json";
 
 interface UserInfo {
-  name?: string | null;
-  image?: string | null;
-  email?: string | null;
+  name?: string | null | undefined;
+  image?: string | null | undefined;
+  email?: string | null | undefined;
 }
 
 interface PresetModel {
   id?: string;
   name: string;
-  mode: Mode;
   taskType: TaskType;
   options?: any;
 }
@@ -37,7 +37,7 @@ interface FiltersSidebarProps {
   selectedPresetKey: string;
   setSelectedPresetKey: (val: string) => void;
   loadingPresets: boolean;
-  applyPreset: (p: PresetModel) => void;
+  applyPreset: (p: { name: string; taskType: TaskType; options?: any }) => void;
   savePreset: () => void;
   refreshPresets?: () => Promise<void> | void;
   defaultPresetId?: string | null;
@@ -52,8 +52,6 @@ interface FiltersSidebarProps {
   // Filters
   taskType: TaskType;
   setTaskType: (val: TaskType) => void;
-  mode: Mode;
-  setMode: (val: Mode) => void;
   tone: Tone;
   setTone: (val: Tone) => void;
   detail: Detail;
@@ -77,378 +75,17 @@ interface FiltersSidebarProps {
 
 const cn = (...arr: Array<string | false | null | undefined>) => arr.filter(Boolean).join(" ");
 
-interface ModelInfo {
-  current: string | null;
-  available: string[];
-  error?: string;
-}
+// No ModelInfo or GemmaConnectionModal needed anymore
+// Modal component removed
 
-const GemmaConnectionModal: React.FC<{ onClose: () => void; onModelSwitched?: () => void }> = ({ onClose, onModelSwitched }) => {
-  const [loading, setLoading] = useState(false);
-  const [modelInfo, setModelInfo] = useState<ModelInfo>({ current: null, available: [] });
-  const [selectedModel, setSelectedModel] = useState<string>('');
-  const [baseUrl, setBaseUrl] = useState<string>('http://localhost:11434');
-  const [switching, setSwitching] = useState(false);
-  const [currentConfig, setCurrentConfig] = useState<any>(null);
-  const [testing, setTesting] = useState(false);
-  const [testResults, setTestResults] = useState<{
-    show: boolean;
-    success: boolean;
-    url: string;
-    models?: string[];
-    error?: string;
-    duration?: number;
-  }>({ show: false, success: false, url: '' });
+// fetchModels and related code removed
 
-  // Fetch current configuration and available models
-  const fetchModels = useCallback(async () => {
-    setLoading(true);
-    try {
-      // First get current config
-      const configRes = await fetch('/api/model/config');
-      const configData = await configRes.json();
-      
-      if (configData.config) {
-        setCurrentConfig(configData.config);
-        setBaseUrl(configData.config.baseUrl || 'http://localhost:11434');
-      }
+// testConnection function removed
 
-      // Then get available models
-      const res = await fetch('/api/model/available');
-      const data = await res.json();
-      setModelInfo(data);
-      setSelectedModel(data.current || '');
-    } catch (err) {
-      console.error('Failed to fetch models:', err);
-      setModelInfo({ current: null, available: [], error: 'Failed to fetch models' });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+// handleSwitchModel function removed
 
-  useEffect(() => {
-    fetchModels();
-  }, [fetchModels]);
 
-  // Function to test connection and fetch models from a specific URL
-  const testConnection = async (url: string) => {
-    console.log('testConnection called with:', url);
-    setTesting(true);
-    console.log('setTesting(true) called');
-    
-    const startTime = Date.now();
-    
-    try {
-      console.log('Starting fetch request...');
-      const res = await fetch(`/api/model/available?baseUrl=${encodeURIComponent(url)}`);
-      console.log('Fetch response received:', res.status);
-      const data = await res.json();
-      console.log('Response data:', data);
-      
-      const duration = Date.now() - startTime;
-      
-      if (data.error) {
-        console.log('Error in response:', data.error);
-        setModelInfo({ current: modelInfo.current, available: [], error: data.error });
-        setTestResults({
-          show: true,
-          success: false,
-          url,
-          error: data.error,
-          duration
-        });
-        return { success: false, error: data.error };
-      } else {
-        console.log('Success, available models:', data.available);
-        setModelInfo({ current: modelInfo.current, available: data.available, error: undefined });
-        setTestResults({
-          show: true,
-          success: true,
-          url,
-          models: data.available,
-          duration
-        });
-        return { success: true, models: data.available };
-      }
-    } catch (e: any) {
-      console.log('Exception caught:', e);
-      const error = 'Connection failed';
-      const duration = Date.now() - startTime;
-      setModelInfo({ current: modelInfo.current, available: [], error });
-      setTestResults({
-        show: true,
-        success: false,
-        url,
-        error,
-        duration
-      });
-      return { success: false, error };
-    } finally {
-      console.log('setTesting(false) called');
-      setTesting(false);
-    }
-  };
-
-  const handleSwitchModel = async () => {
-    if (!selectedModel) return;
-    
-    // Validate base URL format
-    if (!/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(baseUrl.replace(/\/$/, ""))) {
-      alert('Base URL must be a local address (e.g., http://localhost:11434)');
-      return;
-    }
-    
-    setSwitching(true);
-    try {
-      const res = await fetch('/api/model/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: 'ollama',
-          baseUrl: baseUrl,
-          model: selectedModel,
-        }),
-      });
-      
-      if (res.ok) {
-        await fetchModels(); // Refresh to show new current model
-        onModelSwitched?.(); // Notify parent component
-        alert(`Successfully switched to ${selectedModel} at ${baseUrl}`);
-  try { window.dispatchEvent(new Event('MODEL_CHANGED')); } catch {}
-      } else {
-        const error = await res.json();
-        alert(`Failed to switch model: ${error.error || 'Unknown error'}`);
-      }
-    } catch (err) {
-      alert(`Failed to switch model: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    } finally {
-      setSwitching(false);
-    }
-  };
-
-  return (
-    <div 
-      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm"
-      onClick={(e) => {
-        // Only close if clicking the backdrop, not the modal content
-        if (e.target === e.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <div className="w-full max-w-md rounded-lg bg-gray-900 border border-gray-700 p-6 shadow-xl">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-white">Local Gemma 3 Model(s)</h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors"
-          >
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {loading ? (
-          <div className="text-center py-4">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
-            <p className="mt-2 text-gray-400">Loading models...</p>
-          </div>
-        ) : testing ? (
-          <div className="text-center py-4">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-            <p className="mt-2 text-gray-400">Testing connection...</p>
-          </div>
-        ) : modelInfo.error ? (
-          <div className="text-center py-4">
-            <p className="text-red-400 mb-2">{
-              modelInfo.error === 'not-configured' ? 'No model configuration found' :
-              modelInfo.error === 'unreachable' ? 'Cannot connect to Ollama server' :
-              modelInfo.error === 'timeout' ? 'Connection timed out' :
-              modelInfo.error
-            }</p>
-            <button
-              onClick={fetchModels}
-              className="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-            >
-              Retry
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Current Model: <span className="text-white">{modelInfo.current || 'None'}</span>
-              </label>
-              {currentConfig && (
-                <p className="text-xs text-gray-400">
-                  Connected to: {currentConfig.baseUrl}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Base URL:
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={baseUrl}
-                  onChange={(e) => setBaseUrl(e.target.value)}
-                  placeholder="http://localhost:11434"
-                  className="flex-1 rounded-md border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    console.log('Test button clicked');
-                    testConnection(baseUrl);
-                  }}
-                  disabled={testing || switching}
-                  className="px-3 py-2 bg-gray-700 text-white text-sm rounded hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {testing ? '...' : 'Test'}
-                </button>
-              </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Enter the URL where Ollama is running (e.g., http://localhost:11434)
-              </p>
-            </div>
-
-            {modelInfo.available.length > 0 ? (
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Switch to:
-                </label>
-                <CustomSelect
-                  value={selectedModel}
-                  onChange={setSelectedModel}
-                  options={modelInfo.available.map((model) => ({
-                    value: model,
-                    label: model
-                  }))}
-                  placeholder="Select model..."
-                  className="w-full"
-                />
-              </div>
-            ) : (
-              <p className="text-gray-400 text-sm">No Gemma 3 models available at this URL</p>
-            )}
-
-            <div className="flex justify-end space-x-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
-              >
-                Cancel
-              </button>
-              {modelInfo.available.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleSwitchModel}
-                  disabled={switching || !selectedModel}
-                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {switching ? 'Applying...' : 'Apply Configuration'}
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-      
-      {/* Test Results Overlay */}
-      {testResults.show && (
-        <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-lg bg-gray-900 border border-gray-700 p-6 shadow-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-white">
-                {testResults.success ? 'Connection Test - Success' : 'Connection Test - Failed'}
-              </h3>
-              <button
-                onClick={() => setTestResults({ ...testResults, show: false })}
-                className="text-gray-400 hover:text-white p-1 rounded hover:bg-gray-700"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-800">
-                <div className={`w-3 h-3 rounded-full ${testResults.success ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                <div>
-                  <p className="text-white font-medium">
-                    {testResults.success ? 'Connection Successful' : 'Connection Failed'}
-                  </p>
-                  <p className="text-sm text-gray-400">
-                    Tested URL: {testResults.url}
-                  </p>
-                  {testResults.duration && (
-                    <p className="text-xs text-gray-500">
-                      Response time: {testResults.duration}ms
-                    </p>
-                  )}
-                </div>
-              </div>
-              
-              {testResults.success ? (
-                <div>
-                  <h4 className="text-white font-medium mb-2">Available Models:</h4>
-                  {testResults.models && testResults.models.length > 0 ? (
-                    <div className="space-y-1 max-h-40 overflow-y-auto">
-                      {testResults.models.map((model, index) => (
-                        <div key={index} className="flex items-center gap-2 p-2 bg-gray-800 rounded text-sm">
-                          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                          <span className="text-gray-300">{model}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-gray-400 text-sm">No models found</p>
-                  )}
-                </div>
-              ) : (
-                <div>
-                  <h4 className="text-white font-medium mb-2">Error Details:</h4>
-                  <div className="p-3 bg-red-900/20 border border-red-500/30 rounded">
-                    <p className="text-red-300 text-sm">{testResults.error}</p>
-                  </div>
-                  <div className="mt-3 p-3 bg-gray-800 rounded text-xs text-gray-400">
-                    <p className="font-medium mb-2">Troubleshooting:</p>
-                    <ul className="space-y-1">
-                      <li>• Make sure Ollama is running on {testResults.url}</li>
-                      <li>• Check if the URL is correct and accessible</li>
-                      <li>• Verify that no firewall is blocking the connection</li>
-                      <li>• Ensure Ollama API is enabled and listening on the specified port</li>
-                    </ul>
-                  </div>
-                </div>
-              )}
-              
-              <div className="flex justify-end pt-4 border-t border-gray-700">
-                <button
-                  onClick={() => setTestResults({ ...testResults, show: false })}
-                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-const Avatar: React.FC<{ name?: string | null; email?: string | null; image?: string | null }> = ({ name, email, image }) => {
+const Avatar: React.FC<{ name?: string | null | undefined; email?: string | null | undefined; image?: string | null | undefined; }> = ({ name, email, image }) => {
   // Always show a cog icon instead of initials per requirement
   const fullName = name ?? (email ? email.split("@")[0] : undefined) ?? "App Settings";
   const visibleName = 'App Settings';
@@ -458,19 +95,18 @@ const Avatar: React.FC<{ name?: string | null; email?: string | null; image?: st
         // eslint-disable-next-line @next/next/no-img-element
         <img src={image} alt={fullName} className="h-9 w-9 rounded-full object-cover" />
       ) : (
-  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-700 text-white"><Icon name="gear" /></div>
+  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-300 text-light"><Icon name="gear" /></div>
       )}
       <div className="min-w-0">
-        <div className="truncate text-sm font-medium text-gray-100" title={fullName}>{visibleName}</div>
+        <div className="truncate text-sm font-medium text-light" title={fullName}>{visibleName}</div>
       </div>
     </div>
   );
 };
 
-const UserMenu: React.FC<{ user?: UserInfo; openAccount?: () => void; currentModel: string | null; onModelChange: (model: string) => void }> = ({ user, openAccount, currentModel, onModelChange }) => {
+const UserMenu: React.FC<{ user?: UserInfo | undefined; openAccount?: (() => void) | undefined; currentModel: string | null; onModelChange: (model: string) => void }> = ({ user, openAccount, currentModel, onModelChange }) => {
   const [open, setOpen] = useState(false);
   const [sysOpen, setSysOpen] = useState(false);
-  const [gemmaConnectionOpen, setGemmaConnectionOpen] = useState(false);
   const [ragInfoOpen, setRagInfoOpen] = useState(false);
   const sysBtnRef = useRef<HTMLButtonElement | null>(null);
   const sysTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -495,8 +131,8 @@ const UserMenu: React.FC<{ user?: UserInfo; openAccount?: () => void; currentMod
         aria-haspopup="menu"
         aria-expanded={open}
         className={cn(
-          'group flex w-full items-center justify-between rounded-md border border-gray-700 bg-gray-800/50 px-2 py-1.5 text-left text-sm text-gray-200 transition',
-          'hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500'
+          'group flex w-full items-center justify-between rounded-md border border-surface-300 bg-surface-200/50 px-2 py-1.5 text-left text-sm text-light transition interactive-glow',
+          'hover:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-400'
         )}
   title="App Settings menu"
       >
@@ -510,7 +146,7 @@ const UserMenu: React.FC<{ user?: UserInfo; openAccount?: () => void; currentMod
       {open && (
         <div
           role="menu"
-          className="menu-panel absolute left-0 right-0 z-50 mt-2 backdrop-blur-sm animate-in fade-in slide-in-from-top-1 overflow-visible"
+          className="menu-panel absolute left-0 right-0 z-50 mt-2  animate-in fade-in slide-in-from-top-1 overflow-visible"
         >
           {/* System Settings first */}
           <div className="relative">
@@ -564,7 +200,7 @@ const UserMenu: React.FC<{ user?: UserInfo; openAccount?: () => void; currentMod
               <div
                 id="user-menu-system-settings"
                 role="menu"
-                className="menu-panel fixed z-[9999] w-56"
+                className="menu-panel fixed z-[9999] w-56 "
                 style={{ top: Math.max(8, submenuPos.top), left: submenuPos.left }}
                 onMouseEnter={() => {
                   // Clear any pending close timeout when entering submenu
@@ -592,10 +228,10 @@ const UserMenu: React.FC<{ user?: UserInfo; openAccount?: () => void; currentMod
                 >System Prompts</button>
                 <button
                   type="button"
-                  onClick={() => { setGemmaConnectionOpen(true); setOpen(false); setSysOpen(false); }}
+                  onClick={() => { window.dispatchEvent(new CustomEvent('open-provider-selection')); setOpen(false); setSysOpen(false); }}
                   className="menu-item"
                   role="menuitem"
-                >Local Gemma 3 Model(s)</button>
+                >Model Configuration</button>
                 <button
                   type="button"
                   onClick={() => { setRagInfoOpen(true); setOpen(false); setSysOpen(false); }}
@@ -613,44 +249,22 @@ const UserMenu: React.FC<{ user?: UserInfo; openAccount?: () => void; currentMod
           >
             Saved Data
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              window.dispatchEvent(new CustomEvent('open-provider-selection'));
-              setOpen(false);
-            }}
-            className="menu-item text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 focus:bg-indigo-500/10"
-            role="menuitem"
-          >
-            Change Provider
-          </button>
+          <div className="border-t border-surface-300/50 my-1"></div>
+          <div className="px-3 py-2">
+            <ThemeSwitcher />
+          </div>
         </div>
       )}
-      {gemmaConnectionOpen && typeof document !== 'undefined' && createPortal(
-        <GemmaConnectionModal 
-          onClose={() => setGemmaConnectionOpen(false)}
-          onModelSwitched={async () => {
-            // Refresh current model when a switch happens
-            try {
-              const res = await fetch('/api/model/available');
-              const data = await res.json();
-              onModelChange(data.current);
-            } catch (err) {
-              console.error('Failed to refresh model after switch:', err);
-            }
-          }}
-        />, 
-        document.body
-      )}
+      {/* GemmaConnectionModal portal removed */}
       {ragInfoOpen && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
-          <div className="bg-gray-900 rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b border-gray-700">
-              <h2 className="text-lg font-semibold text-white">RAG Learning Data</h2>
+        <div className="fixed inset-0 modal-backdrop-blur flex items-center justify-center z-[9999] p-4">
+          <div className="bg-surface-a10 rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-surface-300/50">
+            <div className="flex items-center justify-between p-4 border-b border-surface-300">
+              <h2 className="text-lg font-semibold text-light">RAG Learning Data</h2>
               <button
                 type="button"
                 onClick={() => setRagInfoOpen(false)}
-                className="text-gray-400 hover:text-white transition-colors"
+                className="text-surface-300 hover:text-light transition-colors"
                 aria-label="Close RAG info"
               >
                 <Icon name="close" className="h-5 w-5" />
@@ -690,8 +304,6 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
     onDeleteChat,
     taskType,
     setTaskType,
-    mode,
-    setMode,
     tone,
     setTone,
     detail,
@@ -762,7 +374,6 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
     const currentName = (renameName || selectedPreset.name).trim();
     const current = {
       name: currentName,
-      mode,
       taskType,
       options: {
         tone,
@@ -777,7 +388,6 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
     } as const;
     const sel = {
       name: selectedPreset.name,
-      mode: selectedPreset.mode,
       taskType: selectedPreset.taskType,
       options: {
         tone: selectedPreset.options?.tone,
@@ -791,16 +401,16 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
       },
     } as const;
     return JSON.stringify(current) !== JSON.stringify(sel);
-  }, [selectedPreset, renameName, mode, taskType, tone, detail, format, language, temperature, stylePreset, aspectRatio, includeTests, requireCitations]);
+  }, [selectedPreset, renameName, taskType, tone, detail, format, language, temperature, stylePreset, aspectRatio, includeTests, requireCitations]);
 
   return (
-    <div className="flex h-full w-80 flex-col overflow-hidden border-r border-gray-800 bg-gray-900 p-3 md:p-4">
+    <div className="flex h-full w-80 flex-col overflow-hidden border-r border-surface-a40 bg-surface-a10 p-4 gap-3">
       <UserMenu user={user} openAccount={openAccount} currentModel={currentModel} onModelChange={handleModelChanged} />
-      <div className="mt-4 mx-1 flex items-center gap-2 rounded-md border border-gray-800 bg-gray-900/60 p-1 text-xs">
+      <div className="mt-3 mx-1 flex items-center gap-1 rounded-lg border border-surface-a40 bg-surface-a20 p-1 text-xs shadow-sm">
         <button
           className={cn(
             "flex-1 rounded-sm px-3 py-1 transition",
-            tab === "settings" ? "bg-gray-800 text-gray-100" : "text-gray-400 hover:text-gray-200"
+            tab === "settings" ? "bg-surface-a30 text-light shadow-sm" : "text-surface-400 hover:text-light hover:bg-surface-a20"
           )}
           onClick={() => setTab("settings")}
           type="button"
@@ -810,7 +420,7 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
         <button
           className={cn(
             "flex-1 rounded-sm px-3 py-1 transition",
-            tab === "chats" ? "bg-gray-800 text-gray-100" : "text-gray-400 hover:text-gray-200"
+            tab === "chats" ? "bg-surface-a30 text-light shadow-sm" : "text-surface-400 hover:text-light hover:bg-surface-a20"
           )}
           onClick={() => setTab("chats")}
           type="button"
@@ -820,13 +430,13 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
       </div>
 
       {tab === "settings" ? (
-      <div className="mt-4 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1 pl-1">
+      <div className="mt-2 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1 pl-1">
           <div className="flex items-center gap-2">
-            <div className="text-xs font-semibold text-gray-400">Presets</div>
+            <div className="text-xs font-semibold text-surface-400">Presets</div>
             <button
               type="button"
               onClick={() => openInfo && openInfo()}
-              className="cursor-pointer text-blue-300 hover:text-blue-200 transition inline-flex items-center justify-center h-4 w-4"
+              className="cursor-pointer text-primary-400 hover:text-primary-300 transition inline-flex items-center justify-center h-4 w-4"
               title="Learn about each setting"
               aria-label="Preset info"
             >
@@ -851,7 +461,7 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
             className="w-full"
           />
           {selectedPreset && (
-            <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-gray-400">
+            <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-surface-400">
               <label className="inline-flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -879,7 +489,6 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
                 // Reset settings to app defaults for a clean Add experience
                 setSelectedPresetKey("");
                 setPresetName("");
-                setMode("build");
                 setTaskType("general");
                 setTone("neutral");
                 setDetail("normal");
@@ -891,7 +500,7 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
                 setIncludeTests(true);
                 setRequireCitations(true);
               }}
-              className="rounded-md border border-gray-600 bg-gray-800 px-3 py-2 text-xs font-semibold text-gray-200 transition hover:bg-gray-700"
+              className="rounded-md border border-surface-300 bg-surface-200 px-3 py-2 text-xs font-semibold text-light transition hover:bg-surface-300 interactive-glow"
             >
               Add New Preset
             </button>
@@ -904,30 +513,30 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
                 setPresetName(defaultName);
                 setSelectedPresetKey("");
               }}
-              className="rounded-md border border-gray-600 bg-gray-800 px-3 py-2 text-xs font-semibold text-gray-200 transition enabled:hover:bg-gray-700 disabled:opacity-50"
+              className="rounded-md border border-surface-300 bg-surface-200 px-3 py-2 text-xs font-semibold text-light transition enabled:hover:bg-surface-300 disabled:opacity-50 interactive-glow"
             >
               Duplicate Preset
             </button>
           </div>
         </div>
 
-        <div className="h-px w-full bg-gray-800" />
+        <div className="h-px w-full bg-surface-tonal-300" />
 
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <label className="mb-1 block text-xs text-gray-400">Preset Name</label>
+            <label className="mb-1 block text-xs text-surface-400">Preset Name</label>
             <input
               value={selectedPreset ? renameName : presetName}
               onChange={(e) => (selectedPreset ? setRenameName(e.target.value) : setPresetName(e.target.value))}
               placeholder="Preset name"
               className={cn(
-                "w-full rounded-md border bg-gray-800 px-3 py-2 text-sm text-gray-100 shadow-sm focus:outline-none focus:ring-2",
+                "w-full rounded-md border bg-surface-200 px-3 py-2 text-sm text-light shadow-sm focus:outline-none focus:ring-2 interactive-glow",
                 // Red border if name duplicates an existing preset name (excluding selected one)
                 (() => {
                   const name = (selectedPreset ? renameName : presetName).trim();
-                  if (!name) return "border-gray-700 focus:ring-blue-500";
+                  if (!name) return "border-surface-300 focus:ring-primary-400";
                   const exists = presets.some((p) => p.name === name && (selectedPreset ? p.name !== selectedPreset.name : true));
-                  return exists ? "border-red-600 focus:ring-red-600" : "border-gray-700 focus:ring-blue-500";
+                  return exists ? "border-primary-a20 focus:ring-primary-a20" : "border-surface-300 focus:ring-primary-400";
                 })()
               )}
               aria-invalid={(() => {
@@ -938,7 +547,7 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-gray-400">Type</label>
+            <label className="mb-1 block text-xs text-surface-400">Type</label>
             <CustomSelect
               value={taskType}
               onChange={(value) => setTaskType(value as TaskType)}
@@ -954,19 +563,7 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-gray-400">Mode</label>
-            <CustomSelect
-              value={mode}
-              onChange={(value) => setMode(value as Mode)}
-              options={[
-                { value: "build", label: "Build" },
-                { value: "enhance", label: "Enhance" }
-              ]}
-              className="w-full text-xs"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-gray-400">Tone</label>
+            <label className="mb-1 block text-xs text-surface-400">Tone</label>
             <CustomSelect
               value={tone}
               onChange={(value) => setTone(value as Tone)}
@@ -981,7 +578,7 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-gray-400">Detail</label>
+            <label className="mb-1 block text-xs text-surface-400">Detail</label>
             <CustomSelect
               value={detail}
               onChange={(value) => setDetail(value as Detail)}
@@ -994,7 +591,7 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-gray-400">Format</label>
+            <label className="mb-1 block text-xs text-surface-400">Format</label>
             <CustomSelect
               value={format}
               onChange={(value) => setFormat(value as Format)}
@@ -1007,7 +604,7 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-gray-400">Language</label>
+            <label className="mb-1 block text-xs text-surface-400">Language</label>
             <CustomSelect
               value={language}
               onChange={(value) => setLanguage(value)}
@@ -1030,7 +627,7 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
 
         <div className="grid grid-cols-1 gap-3">
           <div>
-            <label className="mb-1 block text-xs text-gray-400">Temperature</label>
+            <label className="mb-1 block text-xs text-surface-400">Temperature</label>
             <div className="flex items-center gap-3">
               <input
                 type="range"
@@ -1041,7 +638,7 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
                 onChange={(e) => setTemperature(parseFloat(e.target.value))}
                 className="w-full"
               />
-              <span className="text-xs text-gray-400">{temperature.toFixed(1)}</span>
+              <span className="text-xs text-surface-400">{temperature.toFixed(1)}</span>
             </div>
           </div>
         </div>
@@ -1049,7 +646,7 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
         {taskType === "image" && (
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-xs text-gray-400">Image Style</label>
+              <label className="mb-1 block text-xs text-surface-400">Image Style</label>
               <CustomSelect
                 value={stylePreset}
                 onChange={(value) => setStylePreset(value)}
@@ -1064,7 +661,7 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-gray-400">Aspect Ratio</label>
+              <label className="mb-1 block text-xs text-surface-400">Aspect Ratio</label>
               <CustomSelect
                 value={aspectRatio}
                 onChange={(value) => setAspectRatio(value)}
@@ -1081,14 +678,14 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
         )}
 
         {taskType === "coding" && (
-          <label className="flex items-center gap-2 text-xs text-gray-200">
+          <label className="flex items-center gap-2 text-xs text-light">
             <input type="checkbox" checked={includeTests} onChange={(e) => setIncludeTests(e.target.checked)} />
             Include tests
           </label>
         )}
 
         {taskType === "research" && (
-          <label className="flex items-center gap-2 text-xs text-gray-200">
+          <label className="flex items-center gap-2 text-xs text-light">
             <input type="checkbox" checked={requireCitations} onChange={(e) => setRequireCitations(e.target.checked)} />
             Require citations
           </label>
@@ -1119,7 +716,7 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
                   // noop
                 }
               }}
-              className="w-full rounded-md bg-green-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-green-700 active:bg-green-800"
+              className="w-full rounded-md bg-primary-a20 px-3 py-2 text-xs font-semibold text-light shadow-sm transition hover:bg-primary-a30 active:bg-primary-a40 interactive-glow"
             >
               Add
             </button>
@@ -1140,7 +737,6 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
                     body: JSON.stringify({
                       id: selectedPreset.id,
                       name: newName,
-                      mode,
                       taskType,
                       options: {
                         tone,
@@ -1172,7 +768,7 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
                   // noop
                 }
               }}
-              className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 active:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-md bg-primary-a10 px-3 py-2 text-xs font-semibold text-light shadow-sm transition hover:bg-primary-a20 active:bg-primary-a30 disabled:cursor-not-allowed disabled:opacity-50 interactive-glow"
             >
               Update
             </button>
@@ -1182,13 +778,13 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
                 const confirmBox = document.createElement("div");
                 confirmBox.className = "fixed inset-0 z-50 flex items-center justify-center";
                 confirmBox.innerHTML = `
-                  <div class=\"absolute inset-0 bg-black/60\"></div>
-                  <div class=\"relative z-10 w-[92vw] max-w-sm rounded-xl border border-white/10 bg-gray-900 p-4 text-gray-100 shadow-2xl\">
+                  <div class=\"absolute inset-0 modal-backdrop-blur\"></div>
+                  <div class=\"relative z-10 w-[92vw] max-w-sm rounded-xl border border-surface-400 bg-surface-100 p-4 text-light shadow-2xl \">
                     <div class=\"text-base font-semibold mb-2\">Delete preset?</div>
-                    <div class=\"text-sm text-gray-300\">This action cannot be undone.</div>
+                    <div class=\"text-sm text-surface-400\">This action cannot be undone.</div>
                     <div class=\"mt-4 flex items-center justify-end gap-2\">
-                      <button id=\"pc_cancel\" class=\"rounded-md border border-gray-600 bg-gray-800 px-3 py-1.5 text-sm\">Cancel</button>
-                      <button id=\"pc_confirm\" class=\"rounded-md border border-red-600 bg-red-600/20 px-3 py-1.5 text-sm text-red-200\">Delete</button>
+                      <button id=\"pc_cancel\" class=\"rounded-md border border-surface-400 bg-surface-200 px-3 py-1.5 text-sm text-light hover:bg-surface-300 transition-colors\">Cancel</button>
+                      <button id=\"pc_confirm\" class=\"rounded-md border border-primary-300 bg-primary-100/20 px-3 py-1.5 text-sm text-primary-300 hover:bg-primary-100/30 transition-colors\">Delete</button>
                     </div>
                   </div>`;
                 document.body.appendChild(confirmBox);
@@ -1230,7 +826,6 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
                         setSelectedPresetKey("");
                         try {
                           setPresetName("");
-                          setMode("build");
                           setTaskType("general");
                           setTone("neutral");
                           setDetail("normal");
@@ -1252,7 +847,7 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
                 cancelBtn?.addEventListener("click", onCancel, { once: true });
                 confirmBtn?.addEventListener("click", onConfirm, { once: true });
               }}
-              className="rounded-md border border-red-600/60 bg-red-600/10 px-3 py-2 text-xs font-semibold text-red-300 transition hover:bg-red-600/20"
+              className="rounded-md border border-primary-a20/60 bg-primary-a0/20 px-3 py-2 text-xs font-semibold text-primary-300 transition hover:bg-primary-a0/30 interactive-glow"
             >
               Delete
             </button>
@@ -1276,15 +871,16 @@ export default function FiltersSidebar(props: FiltersSidebarProps) {
 
 function ChatsTab(props: {
   chats: Array<{ id: string; title: string; updatedAt: number; messageCount: number }>;
-  currentChatId?: string | null;
-  onSelectChat?: (id: string) => void;
-  onDeleteChat?: (id: string) => void;
+  currentChatId?: string | null | undefined;
+  onSelectChat?: ((id: string) => void) | undefined;
+  onDeleteChat?: ((id: string) => void) | undefined;
 }) {
   const { chats, currentChatId, onSelectChat, onDeleteChat } = props;
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [selectAllChecked, setSelectAllChecked] = useState(false);
   const utils = api.useUtils();
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
 
   const toggle = (id: string) => setSelected((s) => ({ ...s, [id]: !s[id] }));
   const selectedIds = useMemo(() => Object.keys(selected).filter((k) => selected[k]), [selected]);
@@ -1435,13 +1031,13 @@ function ChatsTab(props: {
     const box = document.createElement("div");
     box.className = "fixed inset-0 z-50 flex items-center justify-center";
     box.innerHTML = `
-      <div class=\"absolute inset-0 bg-black/60\"></div>
-      <div class=\"relative z-10 w-[92vw] max-w-sm rounded-xl border border-white/10 bg-gray-900 p-4 text-gray-100 shadow-2xl\">
+      <div class=\"absolute inset-0 modal-backdrop-blur\"></div>
+      <div class=\"relative z-10 w-[92vw] max-w-sm rounded-xl border border-surface-400 bg-surface-100 p-4 text-light shadow-2xl \">
         <div class=\"text-base font-semibold mb-2\">${title}</div>
-        <div class=\"text-sm text-gray-300\">${body}</div>
+        <div class=\"text-sm text-surface-400\">${body}</div>
         <div class=\"mt-4 flex items-center justify-end gap-2\">
-          <button id=\"pc_cancel\" class=\"rounded-md border border-gray-600 bg-gray-800 px-3 py-1.5 text-sm\">Cancel</button>
-          <button id=\"pc_confirm\" class=\"rounded-md border border-red-600 bg-red-600/20 px-3 py-1.5 text-sm text-red-200\">Delete</button>
+          <button id=\"pc_cancel\" class=\"rounded-md border border-surface-400 bg-surface-200 px-3 py-1.5 text-sm text-light hover:bg-surface-300 transition-colors\">Cancel</button>
+          <button id=\"pc_confirm\" class=\"rounded-md border border-primary-300 bg-primary-100/20 px-3 py-1.5 text-sm text-primary-300 hover:bg-primary-100/30 transition-colors\">Delete</button>
         </div>
       </div>`;
     document.body.appendChild(box);
@@ -1453,14 +1049,14 @@ function ChatsTab(props: {
   return (
     <div className="mt-4 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1 pl-1">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-xs font-semibold text-gray-400">Past Chats</div>
+        <div className="text-xs font-semibold text-surface-400">Past Chats</div>
       </div>
 
       {!selectMode && (
         <div>
           <button
             type="button"
-            className="rounded-md border border-gray-700 px-2 py-1 text-[11px] text-gray-200 hover:bg-white/5"
+            className="rounded-md border border-surface-300 px-2 py-1 text-[11px] text-light hover:bg-surface-200/50 interactive-glow"
             onClick={() => setSelectMode(true)}
           >
             Select
@@ -1471,11 +1067,11 @@ function ChatsTab(props: {
       {selectMode && (
         <>
           {/* Box 1: Export All / Delete All */}
-          <div className="rounded-md border border-gray-800 bg-gray-900/60 p-2">
+          <div className="rounded-md border border-surface-300/50 bg-surface-tonal-200/50 p-2">
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                className="min-w-[110px] rounded-md border border-gray-700 px-2 py-1 text-[11px] text-gray-200 hover:bg-white/5"
+                className="min-w-[110px] rounded-md border border-surface-300 px-2 py-1 text-[11px] text-light hover:bg-surface-200/50 interactive-glow"
                 onClick={() => exportJSON([])}
                 title="Export all chats as JSON"
               >
@@ -1483,11 +1079,16 @@ function ChatsTab(props: {
               </button>
               <button
                 type="button"
-                className="min-w-[110px] rounded-md border border-red-600 bg-red-600/10 px-2 py-1 text-[11px] text-red-300 hover:bg-red-600/20"
+                className="min-w-[110px] rounded-md border border-primary-a20 bg-primary-a0/20 px-2 py-1 text-[11px] text-primary-300 hover:bg-primary-a0/30 interactive-glow"
                 onClick={() => confirmDialog("Delete ALL chats?", "This will remove all chats.", async () => {
-                  for (const c of chats) await onDeleteChat?.(c.id);
+                  const ids = chats.map(c => c.id);
+                  const results = await Promise.allSettled(ids.map(id => onDeleteChat ? onDeleteChat(id) : Promise.resolve()));
+                  const failures = results.filter(r => r.status === 'rejected').length;
+                  const successes = results.length - failures;
+                  setActionNotice(failures ? `${successes} deleted, ${failures} failed` : `Deleted ${successes} chats`);
                   setSelected({});
                   setSelectMode(false);
+                  try { await utils.chat.list.invalidate(); } catch {}
                 })}
               >
                 Delete All
@@ -1496,11 +1097,11 @@ function ChatsTab(props: {
           </div>
 
           {/* Box 2: Export Selected / Delete Selected */}
-          <div className="rounded-md border border-gray-800 bg-gray-900/60 p-2">
+          <div className="rounded-md border border-surface-300/50 bg-surface-tonal-200/50 p-2">
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                className="min-w-[110px] rounded-md border border-gray-700 px-2 py-1 text-[11px] text-gray-200 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="min-w-[110px] rounded-md border border-surface-300 px-2 py-1 text-[11px] text-light hover:bg-surface-200/50 disabled:opacity-50 disabled:cursor-not-allowed interactive-glow"
                 onClick={() => exportJSON(selectedIds)}
                 disabled={!anySelected}
               >
@@ -1508,11 +1109,15 @@ function ChatsTab(props: {
               </button>
               <button
                 type="button"
-                className="min-w-[130px] rounded-md border border-red-600 bg-red-600/10 px-2 py-1 text-[11px] text-red-300 hover:bg-red-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="min-w-[130px] rounded-md border border-primary-a20 bg-primary-a0/20 px-2 py-1 text-[11px] text-primary-300 hover:bg-primary-a0/30 disabled:opacity-50 disabled:cursor-not-allowed interactive-glow"
                 onClick={() => confirmDialog("Delete selected chats?", "This cannot be undone.", async () => {
-                  for (const id of selectedIds) await onDeleteChat?.(id);
+                  const results = await Promise.allSettled(selectedIds.map(id => onDeleteChat ? onDeleteChat(id) : Promise.resolve()));
+                  const failures = results.filter(r => r.status === 'rejected').length;
+                  const successes = results.length - failures;
+                  setActionNotice(failures ? `${successes} deleted, ${failures} failed` : `Deleted ${successes} chats`);
                   setSelected({});
                   setSelectMode(false);
+                  try { await utils.chat.list.invalidate(); } catch {}
                 })}
                 disabled={!anySelected}
               >
@@ -1523,16 +1128,21 @@ function ChatsTab(props: {
         </>
       )}
 
-      <div className="rounded-lg border border-gray-800 bg-gray-900/50">
+      <div className="rounded-lg border border-surface-300/50 bg-surface-tonal-200/50">
+        {actionNotice && (
+          <div className="px-2 py-1 text-[11px] text-surface-300 border-b border-surface-300/80">
+            {actionNotice}
+          </div>
+        )}
         {chats.length === 0 ? (
-          <div className="p-3 text-xs text-gray-500">No saved chats yet.</div>
+          <div className="p-3 text-xs text-surface-500">No saved chats yet.</div>
         ) : (
-          <ul className="divide-y divide-gray-800/80">
+          <ul className="divide-y divide-surface-300/80">
             {selectMode && (
-              <li className="sticky top-0 z-10 flex items-center gap-3 bg-gray-900/70 px-2 py-1 backdrop-blur">
+              <li className="sticky top-0 z-10 flex items-center gap-3 bg-surface-a10 px-2 py-1 ">
                 <input
                   type="checkbox"
-                  className="h-4 w-4 rounded border-gray-600 bg-gray-800"
+                  className="h-4 w-4 rounded border-surface-300 bg-surface-200"
                   checked={selectAllChecked}
                   onChange={(e) => {
                     const checked = e.target.checked;
@@ -1541,17 +1151,17 @@ function ChatsTab(props: {
                     else setSelected({});
                   }}
                 />
-                <div className="ml-1 text-[11px] text-gray-400">Select all</div>
+                <div className="ml-1 text-[11px] text-surface-400">Select all</div>
                 <div className="ml-auto flex items-center gap-2">
-                  <button type="button" className="rounded-md border border-gray-700 px-2 py-1 text-[11px] text-gray-200 hover:bg-white/5" onClick={() => { setSelectMode(false); setSelectAllChecked(false); }}>Cancel</button>
-                  <button type="button" className="rounded-md border border-gray-700 px-2 py-1 text-[11px] text-gray-200 hover:bg-white/5" onClick={() => { setSelected({}); setSelectAllChecked(false); }}>Clear</button>
+                  <button type="button" className="rounded-md border border-surface-300 px-2 py-1 text-[11px] text-light hover:bg-surface-200/50" onClick={() => { setSelectMode(false); setSelectAllChecked(false); }}>Cancel</button>
+                  <button type="button" className="rounded-md border border-surface-300 px-2 py-1 text-[11px] text-light hover:bg-surface-200/50" onClick={() => { setSelected({}); setSelectAllChecked(false); }}>Clear</button>
                 </div>
               </li>
             )}
             {chats.map((c) => (
-              <li key={c.id} className={cn("flex items-center gap-3 p-2 transition hover:bg-gray-800/60", currentChatId === c.id && "bg-gray-800/50") }>
+              <li key={c.id} className={cn("flex items-center gap-3 p-2 transition hover:bg-surface-200/60", currentChatId === c.id && "bg-surface-200/50") }>
                 {selectMode && (
-                  <input type="checkbox" className="h-4 w-4 rounded border-gray-600 bg-gray-800" checked={!!selected[c.id]} onChange={() => toggle(c.id)} />
+                  <input type="checkbox" className="h-4 w-4 rounded border-surface-300 bg-surface-200" checked={!!selected[c.id]} onChange={() => toggle(c.id)} />
                 )}
                 <button
                   type="button"
@@ -1559,12 +1169,12 @@ function ChatsTab(props: {
                   className="flex min-w-0 flex-1 items-center gap-2 text-left"
                   title={c.title}
                 >
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-indigo-600/20 text-indigo-300"><Icon name="comments" /></div>
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-200/20 text-primary-400"><Icon name="comments" /></div>
                   <div className="min-w-0">
-                    <div className="truncate text-sm text-gray-200">{c.title || "Untitled"}</div>
-                    <div className="text-[10px] text-gray-500">{new Date(c.updatedAt).toLocaleString()}</div>
+                    <div className="truncate text-sm text-light">{c.title || "Untitled"}</div>
+                    <div className="text-[10px] text-surface-400">{new Date(c.updatedAt).toLocaleString()}</div>
                   </div>
-                  <div className="ml-auto shrink-0 rounded-full bg-gray-800 px-2 py-0.5 text-[10px] text-gray-300">{c.messageCount}</div>
+                  <div className="ml-auto shrink-0 rounded-full bg-surface-200 px-2 py-0.5 text-[10px] text-light">{c.messageCount}</div>
                 </button>
               </li>
             ))}

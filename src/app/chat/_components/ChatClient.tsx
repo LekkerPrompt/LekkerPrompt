@@ -1,34 +1,49 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Icon } from "@/components/Icon";
-import FiltersSidebar from "./FiltersSidebar";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/trpc/react";
-import { isElectronRuntime } from '@/lib/runtime';
-import Image from "next/image";
 import { CustomSelect } from "@/components/CustomSelect";
 import MessageFeedback from "@/components/MessageFeedback";
+import RagInfoViewer from "@/components/RagInfoViewer";
+import { Icon } from "@/components/Icon";
+import { isElectronRuntime } from '@/lib/runtime';
+import Titlebar from "@/components/Titlebar";
 
+type MessageRole = "user" | "assistant";
+interface MessageItem { id: string; role: MessageRole; content: string; userFeedback?: 'like' | 'dislike' | undefined; }
+type UserInfo = { name?: string | null; image?: string | null; email?: string | null };
+
+export default function ChatClient(_props: { user?: UserInfo }) {
+  const [input, setInput] = useState("");
+  const [messages, setMessages] = useState<MessageItem[]>([]);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [modelLabel, setModelLabel] = useState<string>("Gemma 3 4B");
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [modelMenuUp, setModelMenuUp] = useState(false);
+  const modelBtnRef = useRef<HTMLButtonElement | null>(null);
+  const modelMenuRef = useRef<HTMLDivElement | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isSmallScreen, setIsSmallScreen] = useState(false);
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+  const [presetEditorOpen, setPresetEditorOpen] = useState(false);
+  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
+  const [showAllChatsOpen, setShowAllChatsOpen] = useState(false);
+  const [ragInfoOpen, setRagInfoOpen] = useState(false);
+  const [currentTheme, setCurrentTheme] = useState<'default' | 'warm' | 'light'>('default');
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [presetSelectorOpen, setPresetSelectorOpen] = useState(false);
+  const [deletingPresetId, setDeletingPresetId] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Material UI + app settings (presets)
 type Mode = "build" | "enhance";
 type TaskType = "general" | "coding" | "image" | "research" | "writing" | "marketing";
 type Tone = "neutral" | "friendly" | "formal" | "technical" | "persuasive";
 type Detail = "brief" | "normal" | "detailed";
 type Format = "plain" | "markdown" | "json";
-
-interface MessageItem {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  userFeedback?: 'like' | 'dislike';
-}
-
-type UserInfo = { name?: string | null; image?: string | null; email?: string | null };
-
-interface ChatClientProps { user?: UserInfo }
-
-export default function ChatClient({ user }: ChatClientProps) {
-  // Utility to compose class names
-  const cn = (...arr: Array<string | false | null | undefined>) => arr.filter(Boolean).join(" ");
 
   const [mode, setMode] = useState<Mode>("build");
   const [taskType, setTaskType] = useState<TaskType>("general");
@@ -37,291 +52,135 @@ export default function ChatClient({ user }: ChatClientProps) {
   const [format, setFormat] = useState<Format>("markdown");
   const [language, setLanguage] = useState("English");
   const [temperature, setTemperature] = useState(0.7);
-  // Type-specific
   const [stylePreset, setStylePreset] = useState("photorealistic");
   const [aspectRatio, setAspectRatio] = useState("1:1");
   const [includeTests, setIncludeTests] = useState(true);
   const [requireCitations, setRequireCitations] = useState(true);
   const [presetName, setPresetName] = useState("");
-  const [presets, setPresets] = useState<Array<{ id?: string; name: string; mode: Mode; taskType: TaskType; options?: any }>>([]);
+  const [presets, setPresets] = useState<Array<{ id?: string; name: string; taskType: TaskType; options?: any }>>([]);
   const [loadingPresets, setLoadingPresets] = useState(false);
   const [selectedPresetKey, setSelectedPresetKey] = useState("");
   const [defaultPresetId, setDefaultPresetId] = useState<string | null>(null);
-  const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<MessageItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [genDots, setGenDots] = useState(1);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const MAX_INPUT_HEIGHT = 200;
-  const [error, setError] = useState<string | null>(null);
-  // Track whether a local model is configured (only then do we attempt streaming local generation)
-  const [hasLocalModel, setHasLocalModel] = useState(false);
-  // Sidebar is always open on desktop (md: >=768px). We still track state for mobile.
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  // Model display in header
-  const [modelDisplay, setModelDisplay] = useState<string | null>(null);
 
-  // Fetch model config for header banner
-  useEffect(() => {
-    const fetchModelDisplay = async () => {
-      try {
-        const res = await fetch('/api/model/config');
-        const data = await res.json();
-        const cfg = data?.config;
-        if (!cfg) { setModelDisplay(null); return; }
-        if (cfg.provider === 'openrouter-proxy') {
-          setModelDisplay('API Gemma 3 27B');
-          return;
-        }
-        if (cfg.provider === 'ollama' && typeof cfg.model === 'string') {
-          const size = (cfg.model.split(':')[1] || '').toUpperCase();
-          if (size) {
-            setModelDisplay(`Local Gemma 3 ${size}`);
-            return;
-          }
-        }
-        setModelDisplay(null);
-      } catch {
-        setModelDisplay(null);
-      }
-    };
-    fetchModelDisplay();
-    const handler = () => fetchModelDisplay();
-    window.addEventListener('MODEL_CHANGED', handler);
-    return () => window.removeEventListener('MODEL_CHANGED', handler);
-  }, []);
-
-  // On first mount, open sidebar automatically if desktop viewport.
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      if (window.matchMedia('(min-width: 768px)').matches) {
-        setSidebarOpen(true);
-      }
-    }
-  }, []);
-  const [accountOpen, setAccountOpen] = useState(false); // Saved Data modal
-  const [infoOpen, setInfoOpen] = useState(false);
-  const renderMessageContent = useCallback((text: string, messageId?: string) => {
-    const trimmed = text.trim();
-
-    // Special styling for rejection / guidance messages generated by prompt-builder
-    if (/^User input rejected:/i.test(trimmed)) {
-      return (
-        <div className="rounded-lg border border-amber-500/40 bg-amber-900/30 px-3 py-2 text-amber-200 text-xs leading-relaxed">
-          {trimmed.replace(/^User input rejected:\s*/i, '')}
-        </div>
-      );
-    }
-
-    if (/^NEED_CONTEXT\s+–/i.test(trimmed)) {
-      return (
-        <div className="rounded-md border border-blue-400/40 bg-blue-900/30 px-3 py-2 text-[11px] leading-relaxed text-blue-200">
-          {trimmed.replace(/^NEED_CONTEXT\s+–\s*/i, '')}
-        </div>
-      );
-    }
-
-    // 1) If entire message is valid JSON (no fences), show as JSON code block
-    const looksLikeJson = (s: string) => (s.startsWith("{") && s.endsWith("}")) || (s.startsWith("[") && s.endsWith("]"));
-    if (looksLikeJson(trimmed)) {
-      try {
-        const parsed = JSON.parse(trimmed);
-        const pretty = JSON.stringify(parsed, null, 2);
-        return (
-          <div className="message-prose max-w-none">
-            <div className="my-2 overflow-hidden rounded-lg border border-white/10 bg-black/30">
-              <div className="flex items-center justify-between border-b border-white/10 bg-black/20 px-3 py-1.5 text-[11px] text-gray-300">
-                <span className="uppercase tracking-wider">json</span>
-              </div>
-              <pre className="overflow-x-auto p-3 text-[13px]" style={{ maxWidth: "100%" }}>
-                <code className="block leading-6" style={{ display: "block", maxWidth: "100%" }}>{pretty}</code>
-              </pre>
-            </div>
-          </div>
-        );
-      } catch {
-        // fall through to fence parsing
-      }
-    }
-
-    // 2) Parse fenced code blocks (always on)
-    const elements: ReactNode[] = [];
-    const codeRegex = /```([a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g;
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = codeRegex.exec(text)) !== null) {
-      const [full, langRaw, code] = match;
-      const start = match.index;
-      const end = start + full.length;
-      if (start > lastIndex) {
-        const before = text.slice(lastIndex, start);
-        if (before.trim().length > 0) {
-          elements.push(
-            <p key={`t-${lastIndex}`} className="whitespace-pre-wrap break-words leading-relaxed">
-              {before}
-            </p>
-          );
-        }
-      }
-      const lang = (langRaw || "code").toLowerCase();
-      const codeKey = `code-${messageId ?? "msg"}-${start}`;
-      elements.push(
-        <div key={`c-${start}`} className="my-2 overflow-hidden rounded-lg border border-white/10 bg-black/30">
-          <div className="flex items-center justify-between border-b border-white/10 bg-black/20 px-3 py-1.5 text-[11px] text-gray-300">
-            <span className="uppercase tracking-wider">{lang}</span>
-            <button
-              type="button"
-              aria-label="Copy code"
-              title="Copy code"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(String(code));
-                  setCopiedId(codeKey);
-                  window.setTimeout(() => {
-                    setCopiedId((prev) => (prev === codeKey ? null : prev));
-                  }, 2000);
-                } catch {
-                  // noop
-                }
-              }}
-              className="rounded p-1 text-gray-300/80 transition hover:bg-white/10 hover:text-white"
-            >
-              {copiedId === codeKey ? (
-                <svg className="h-4 w-4 text-emerald-400" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              ) : (
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M9 9h9v12H9z" stroke="currentColor" strokeWidth="1.5" fill="currentColor" opacity="0.2" />
-                  <path d="M6 3h9v12H6z" stroke="currentColor" strokeWidth="1.5" fill="currentColor" />
-                </svg>
-              )}
-            </button>
-          </div>
-          <pre className="overflow-x-auto p-3 text-[13px]" style={{ maxWidth: "100%" }}><code className="block leading-6" style={{ display: "block", maxWidth: "100%" }}>{code}</code></pre>
-        </div>
-      );
-      lastIndex = end;
-    }
-    if (elements.length > 0) {
-      if (lastIndex < text.length) {
-        const rest = text.slice(lastIndex);
-        if (rest.trim().length > 0) {
-          elements.push(
-            <p key={`t-${lastIndex}-end`} className="whitespace-pre-wrap break-words leading-relaxed">
-              {rest}
-            </p>
-          );
-        }
-      }
-      return <div className="message-prose max-w-none">{elements}</div>;
-    }
-
-    // 3) Fallback: show as text, preserving newlines
-    return <p className="whitespace-pre-wrap break-words leading-relaxed">{text}</p>;
-  }, [setCopiedId, copiedId]);
-  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
-
-  // tRPC utilities and queries for chats
+  // TRPC
   const utils = api.useUtils();
   const { data: chatList } = api.chat.list.useQuery(undefined, { refetchOnWindowFocus: false });
   const createChat = api.chat.create.useMutation();
-  const appendMessages = api.chat.appendMessages.useMutation({
-    onSuccess: async () => {
-      await utils.chat.list.invalidate();
-    },
-  });
-  const removeChat = api.chat.remove.useMutation({
-    onSuccess: async () => {
-      await utils.chat.list.invalidate();
-    },
-  });
+  const appendMessages = api.chat.appendMessages.useMutation({ onSuccess: async () => { await utils.chat.list.invalidate(); } });
+  const removeChat = api.chat.remove.useMutation({ onSuccess: async () => { await utils.chat.list.invalidate(); } });
 
-  const responseEndRef = useRef<HTMLDivElement | null>(null);
-
-  const currentPreset = useMemo(() => {
-    return presets.find((p) => (p.id ?? p.name) === selectedPresetKey) ?? null;
-  }, [presets, selectedPresetKey]);
-
+  // Load local Ollama models only
   useEffect(() => {
-    responseEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
-
-  // Detect local model configuration in Electron runtime
-  useEffect(() => {
-    if (!isElectronRuntime()) return;
-    let cancelled = false;
-    (async () => {
+    const load = async () => {
       try {
-        const res = await fetch('/api/model/config');
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!cancelled) setHasLocalModel(!!data?.config);
-      } catch { /* ignore */ }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  // Animate generating ellipsis while awaiting AI response
-  useEffect(() => {
-    if (!loading) return;
-    const id = setInterval(() => setGenDots((d) => (d % 3) + 1), 500);
-    return () => clearInterval(id);
-  }, [loading]);
-
-  const autoResize = useCallback(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    const max = MAX_INPUT_HEIGHT;
-    const needed = Math.min(el.scrollHeight, max);
-    el.style.height = `${needed}px`;
-    el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
-  }, [MAX_INPUT_HEIGHT]);
-
-  // Shrink back down when input becomes empty (e.g., after send or manual clear)
-  useEffect(() => {
-    if (input.trim().length === 0) {
-      const el = inputRef.current;
-      if (el) {
-        el.style.height = 'auto';
-        el.style.overflowY = 'hidden';
-      }
-    }
-  }, [input]);
-
-  // Close sidebar on Escape
-  useEffect(() => {
-    if (!sidebarOpen) return;
-    // Escape should only close on mobile viewports.
-    if (typeof window === 'undefined') return;
-    const isDesktop = window.matchMedia('(min-width: 768px)').matches;
-    if (isDesktop) return; // Do nothing on desktop.
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSidebarOpen(false);
+        // Load current config and available models
+        const [cfgRes, availRes] = await Promise.all([
+          fetch('/api/model/config'),
+          fetch('/api/model/available?baseUrl=http://localhost:11434')
+        ]);
+        
+        if (availRes.ok) {
+          const av = await availRes.json();
+          setAvailableModels(Array.isArray(av?.available) ? av.available : []);
+        }
+        
+        if (cfgRes.ok) {
+          const cfgData = await cfgRes.json();
+          const cfg = cfgData?.config;
+          if (cfg && cfg.provider === 'ollama' && typeof cfg.model === 'string') {
+          const size = (cfg.model.split(':')[1] || '').toUpperCase();
+            setModelLabel(size ? `Gemma 3 ${size}` : 'Gemma 3');
+          }
+        }
+      } catch {/* ignore */}
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [sidebarOpen]);
-
-  // Keep sidebar forced open whenever switching to desktop viewport.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const mq = window.matchMedia('(min-width: 768px)');
-    const ensureOpen = () => { if (mq.matches) setSidebarOpen(true); };
-    ensureOpen();
-    mq.addEventListener('change', ensureOpen);
-    return () => mq.removeEventListener('change', ensureOpen);
+    load();
   }, []);
 
+  // Theme management
   useEffect(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    autoResize();
-  }, [autoResize]);
+    const savedTheme = localStorage.getItem('theme-preference') as 'default' | 'warm' | 'light' | null;
+    if (savedTheme) {
+      setCurrentTheme(savedTheme);
+      document.documentElement.setAttribute('data-theme', savedTheme === 'default' ? '' : savedTheme);
+    }
+  }, []);
 
+  const setTheme = useCallback((theme: 'default' | 'warm' | 'light') => {
+    setCurrentTheme(theme);
+    document.documentElement.setAttribute('data-theme', theme === 'default' ? '' : theme);
+    localStorage.setItem('theme-preference', theme);
+    setThemeMenuOpen(false);
+  }, []);
+
+  const themes = [
+    { id: 'default', name: 'Default'},
+    { id: 'light', name: 'Light'},
+    { id: 'warm', name: 'Earth'},
+  ] as const;
+
+  // Refresh available models
+  const refreshModels = useCallback(async () => {
+    try {
+      const directRes = await fetch('/api/model/available?baseUrl=http://localhost:11434');
+      if (directRes.ok) {
+        const directData = await directRes.json();
+        setAvailableModels(Array.isArray(directData?.available) ? directData.available : []);
+      }
+                } catch {
+      setAvailableModels([]);
+    }
+  }, []);
+
+  // Handle responsive sidebar
+  useEffect(() => {
+    const checkScreenSize = () => {
+      const isSmall = window.innerWidth < 1024; // lg breakpoint
+      setIsSmallScreen(isSmall);
+      if (!isSmall) setSidebarOpen(false); // Auto-close sidebar on large screens
+    };
+    checkScreenSize();
+    window.addEventListener('resize', checkScreenSize);
+    return () => window.removeEventListener('resize', checkScreenSize);
+  }, []);
+
+  // Position model dropdown to avoid viewport overflow
+  useEffect(() => {
+    if (!modelMenuOpen) return;
+    const btn = modelBtnRef.current;
+    const menu = modelMenuRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const estimatedMenuH = Math.min(320, menu?.getBoundingClientRect().height || 240);
+    setModelMenuUp(spaceBelow < estimatedMenuH && spaceAbove > spaceBelow);
+
+    const onClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (!btn.contains(target) && !(menu && menu.contains(target))) {
+        setModelMenuOpen(false);
+      }
+    };
+    const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setModelMenuOpen(false); };
+    document.addEventListener('mousedown', onClickOutside);
+    document.addEventListener('keydown', onEsc);
+    return () => {
+      document.removeEventListener('mousedown', onClickOutside);
+      document.removeEventListener('keydown', onEsc);
+    };
+  }, [modelMenuOpen]);
+
+  // Ensure chat exists or create one
+  const ensureChat = useCallback(async (firstLine: string) => {
+    if (currentChatId) return currentChatId;
+    const title = (firstLine || "New chat").slice(0, 40) || "New chat";
+    const created = await createChat.mutateAsync({ title });
+    setCurrentChatId(created.id);
+    return created.id;
+  }, [currentChatId, createChat]);
+
+  // Presets load / helpers
   useEffect(() => {
     const load = async () => {
       setLoadingPresets(true);
@@ -330,23 +189,21 @@ export default function ChatClient({ user }: ChatClientProps) {
           fetch("/api/presets"),
           fetch("/api/presets/default").catch(() => null),
         ]);
-        let defaultId: string | null = null;
+        let defId: string | null = null;
         if (defRes && defRes.ok) {
           const d = await defRes.json().catch(() => ({}));
-          defaultId = typeof d?.defaultPresetId === "string" ? d.defaultPresetId : null;
+          defId = typeof d?.defaultPresetId === "string" ? d.defaultPresetId : null;
+          setDefaultPresetId(defId);
         }
-        setDefaultPresetId(defaultId);
         if (res.ok) {
           const data = await res.json();
-          const list = data.presets ?? [];
+          const list = (data.presets ?? []).map((p: any) => ({ id: p.id, name: p.name, taskType: p.taskType, options: p.options }));
           setPresets(list);
-          // Auto-select default or first preset
           if (!selectedPresetKey) {
-            const pick = (defaultId && list.find((p: any) => p.id === defaultId)) || list[0] || null;
+            const pick = (defId && list.find((p: any) => p.id === defId)) || list[0] || null;
             if (pick) {
               setSelectedPresetKey(pick.id ?? pick.name);
-              const p = list.find((x: any) => (x.id ?? x.name) === (pick.id ?? pick.name));
-              if (p) applyPreset(p);
+              applyPreset(pick);
             }
           }
         }
@@ -363,31 +220,13 @@ export default function ChatClient({ user }: ChatClientProps) {
       const res = await fetch("/api/presets");
       if (res.ok) {
         const data = await res.json();
-        setPresets(data.presets ?? []);
+        setPresets((data.presets ?? []).map((p: any) => ({ id: p.id, name: p.name, taskType: p.taskType, options: p.options })));
       }
-    } finally {
-      setLoadingPresets(false);
-    }
+    } finally { setLoadingPresets(false); }
   }, []);
 
-  // Optional: restore last opened chat id from local storage (no writes back)
-  // Defer restoring last chat until chat list & session ready to avoid race with auth/protected procedures
-  const initialChatIdRef = useRef<string | null>(null);
-  const restoredLastChatRef = useRef(false);
-  useEffect(() => {
-    try {
-      initialChatIdRef.current = localStorage.getItem('pc_current_chat');
-    } catch {
-      initialChatIdRef.current = null;
-    }
-  }, []);
-
-  // We'll declare selectChat then run an effect to auto-load previous chat.
-
-  const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading]);
-  const applyPreset = useCallback((p: { name: string; mode: Mode; taskType: TaskType; options?: any }) => {
+  const applyPreset = useCallback((p: { name: string; taskType: TaskType; options?: any }) => {
     setPresetName(p.name);
-    setMode(p.mode);
     setTaskType(p.taskType);
     const o = p.options ?? {};
     if (o.tone) setTone(o.tone);
@@ -401,40 +240,17 @@ export default function ChatClient({ user }: ChatClientProps) {
     setRequireCitations(!!o.requireCitations);
   }, []);
 
-  const startNewChat = useCallback(() => {
-    setMessages([]);
-    setInput("");
-    setError(null);
-    setCurrentChatId(null);
-    initialChatIdRef.current = null;
-    restoredLastChatRef.current = true; // prevent restoration effect later
-    try { localStorage.removeItem("pc_current_chat"); } catch {}
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }, []);
-
-  
-  
-
   const savePreset = useCallback(async () => {
     const name = presetName.trim();
-    if (!name) {
-      setError("Please enter a preset name");
-      return;
-    }
-    try {
-      const res = await fetch("/api/presets", {
+    if (!name) return;
+    await fetch("/api/presets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name,
-          mode,
           taskType,
           options: {
-            tone,
-            detail,
-            format,
-            language: language || undefined,
-            temperature,
+          tone, detail, format, language: language || undefined, temperature,
             stylePreset: taskType === "image" ? stylePreset : undefined,
             aspectRatio: taskType === "image" ? aspectRatio : undefined,
             includeTests: taskType === "coding" ? includeTests : undefined,
@@ -442,131 +258,55 @@ export default function ChatClient({ user }: ChatClientProps) {
           },
         }),
       });
-      if (!res.ok) throw new Error("Failed to save preset");
-      const data = await res.json();
-      const updated = presets.filter((p) => p.name !== data.preset.name);
-      updated.unshift(data.preset);
-      setPresets(updated);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    }
-  }, [presetName, mode, taskType, tone, detail, format, language, temperature, stylePreset, aspectRatio, includeTests, requireCitations, presets]);
+  }, [presetName, taskType, tone, detail, format, language, temperature, stylePreset, aspectRatio, includeTests, requireCitations]);
 
-  const ensureChatId = useCallback(async (firstLineForTitle?: string) => {
-    // Only trust currentChatId if we've actually loaded messages for it (prevents stale id after failed restore)
-    if (currentChatId && lastLoadedChatIdRef.current === currentChatId) {
-      const list = chatList ?? (await utils.chat.list.fetch()).map((c: any) => ({ id: c.id }));
-      const exists = Array.isArray(list) && list.some((c: any) => c.id === currentChatId);
-      if (exists) return currentChatId;
+  const deletePreset = useCallback(async (presetId: string, presetName: string) => {
+    if (!confirm(`Delete preset "${presetName}"? This cannot be undone.`)) return;
+    
+    setDeletingPresetId(presetId);
+    try {
+      const query = presetId ? `id=${encodeURIComponent(presetId)}` : `name=${encodeURIComponent(presetName)}`;
+      await fetch(`/api/presets?${query}`, { method: 'DELETE' });
+      await reloadPresets();
+      
+      // If deleted preset was selected, clear selection
+      if (selectedPresetKey === presetId || selectedPresetKey === presetName) {
+        setSelectedPresetKey("");
+      }
+    } catch (err) {
+      setError('Failed to delete preset');
+    } finally {
+      setDeletingPresetId(null);
     }
-    setCurrentChatId(null);
-    lastLoadedChatIdRef.current = null;
-    try { localStorage.removeItem("pc_current_chat"); } catch {}
-    const title = (firstLineForTitle ?? "").slice(0, 40) || "New chat";
-    const created = await createChat.mutateAsync({ title });
-    setCurrentChatId(created.id);
-    lastLoadedChatIdRef.current = created.id;
-    try { localStorage.setItem("pc_current_chat", created.id); } catch {}
-    return created.id;
-  }, [currentChatId, createChat, chatList, utils.chat.list]);
+  }, [selectedPresetKey, reloadPresets]);
 
   const send = useCallback(async () => {
-    if (!canSend) return;
     const text = input.trim();
-    setInput("");
-    // Immediately reset height so it shrinks without waiting for rerender/layout thrash
-    const el = inputRef.current;
-    if (el) {
-      el.style.height = 'auto';
-      el.style.overflowY = 'hidden';
-    }
+    if (!text || sending) return;
+    setSending(true);
     setError(null);
-    // Ensure chat exists (create in DB if needed)
-    let chatId: string;
-    try {
-      chatId = await ensureChatId(text);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to start chat");
-      return;
-    }
-    const userMsg: MessageItem = { id: crypto.randomUUID(), role: "user", content: text };
-    setMessages((m) => {
-      // Cap chat at 50 messages
-      const next = [...m, userMsg];
-      return next.slice(Math.max(0, next.length - 50));
-    });
-    // Append user message to DB (cap enforced server-side)
-    try {
-      await appendMessages.mutateAsync({ chatId, messages: [{ id: userMsg.id, role: userMsg.role, content: userMsg.content }], cap: 50 });
-    } catch (e) {
-      console.error('Failed to save user message:', e);
-      // Keep UI responsive even if DB append fails
-    }
-    setLoading(true);
-    try {
-      const base = process.env.NEXT_PUBLIC_BASE_PATH || "";
-  const useStreaming = isElectronRuntime() && hasLocalModel; // only stream when a local model is actually configured
-  if (useStreaming) {
-        // Streaming via SSE
         const controller = new AbortController();
-  const res = await fetch(`/api/googleai/chat/stream`, {
+    abortRef.current = controller;
+    setInput("");
+    const chatId = await ensureChat(text);
+    const user: MessageItem = { id: crypto.randomUUID(), role: "user", content: text };
+    setMessages((m) => [...m, user]);
+    try {
+      // Persist user message and update ID
+      try { 
+        const userResult = await appendMessages.mutateAsync({ chatId, messages: [{ id: user.id, role: user.role, content: user.content }], cap: 50 });
+        // Update the user message ID with the database ID
+        const createdUserMessages = userResult?.createdMessages;
+        const createdUserId = createdUserMessages?.[0]?.id;
+        if (createdUserId) {
+          setMessages((m) => m.map(msg => msg.id === user.id ? { ...msg, id: createdUserId } : msg));
+        }
+      } catch {}
+
+      const res = await fetch('/api/googleai/chat', {
           method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              input: text,
-              mode,
-              taskType,
-              options: { tone, detail, format, language: language || undefined, temperature, stylePreset: taskType === 'image' ? stylePreset : undefined, aspectRatio: taskType === 'image' ? aspectRatio : undefined, includeTests: taskType === 'coding' ? includeTests : undefined, requireCitations: taskType === 'research' ? requireCitations : undefined }
-            }),
-            signal: controller.signal
-        });
-        if (!res.ok || !res.body) throw new Error('Stream request failed');
-        const reader = res.body.getReader();
-  let assistantId = crypto.randomUUID();
-  let assistantContentBuffer = '';
-  setMessages(m => [...m, { id: assistantId, role: 'assistant', content: '' }]);
-        const decoder = new TextDecoder();
-        let buffer = '';
-        while (true) {
-          const { done, value } = await reader.read();
-            if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const parts = buffer.split('\n\n');
-          buffer = parts.pop() || '';
-          for (const p of parts) {
-            if (!p.startsWith('data:')) continue;
-            const payload = p.slice(5).trim();
-            try {
-              const obj = JSON.parse(payload);
-              if (obj.delta) {
-                assistantContentBuffer += obj.delta;
-                const delta = obj.delta; // capture
-                setMessages(m => m.map(msg => msg.id === assistantId ? { ...msg, content: msg.content + delta } : msg));
-              } else if (obj.done) {
-                // persist using accumulated buffer to avoid stale closure
-                const finalContent = assistantContentBuffer;
-                try { 
-                  await appendMessages.mutateAsync({ chatId, messages: [{ id: assistantId, role: 'assistant', content: finalContent }], cap: 50 }); 
-                } catch (e) { 
-                  console.error('Failed to save streaming assistant message:', e); 
-                }
-              } else if (obj.error) {
-                const errMsg = obj.error as string;
-                // Surface error inside the assistant placeholder instead of blank output
-                setMessages(m => m.map(msg => msg.id === assistantId ? { ...msg, content: `Error: ${errMsg}` } : msg));
-                setError(errMsg);
-                // Finish early
-                controller.abort();
-              }
-            } catch {
-              // ignore malformed
-            }
-          }
-        }
-      } else {
-  const res = await fetch(`${base}/api/googleai/chat`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
           body: JSON.stringify({
             input: text,
             mode,
@@ -581,485 +321,762 @@ export default function ChatClient({ user }: ChatClientProps) {
               aspectRatio: taskType === 'image' ? aspectRatio : undefined,
               includeTests: taskType === 'coding' ? includeTests : undefined,
               requireCitations: taskType === 'research' ? requireCitations : undefined,
-            },
+          }
           }),
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error ?? 'Request failed');
-        const assistantMsg: MessageItem = { id: crypto.randomUUID(), role: 'assistant', content: data.output as string };
-        setMessages(m => { const next = [...m, assistantMsg]; return next.slice(Math.max(0, next.length - 50)); });
-        try { 
-          await appendMessages.mutateAsync({ chatId, messages: [{ id: assistantMsg.id, role: assistantMsg.role, content: assistantMsg.content }], cap: 50 }); 
-        } catch (e) { 
-          console.error('Failed to save non-streaming assistant message:', e); 
-        }
+      const json = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error((json?.error && (json.error.message || json.error)) || 'Request failed');
+      const output = (json?.data?.output ?? json?.output);
+      if (typeof output !== 'string') throw new Error('Invalid response');
+      const assistant: MessageItem = { id: crypto.randomUUID(), role: 'assistant', content: output };
+      setMessages((m) => [...m, assistant]);
+      try { 
+        const result = await appendMessages.mutateAsync({ chatId, messages: [{ id: assistant.id, role: assistant.role, content: assistant.content }], cap: 50 });
+        // Update the message ID with the database ID for proper feedback tracking
+          const createdAssistantMessages = result?.createdMessages;
+          const createdAssistantId = createdAssistantMessages?.[0]?.id;
+          if (createdAssistantId) {
+            setMessages((m) => m.map(msg => msg.id === assistant.id ? { ...msg, id: createdAssistantId } : msg));
+          }
+      } catch {}
+    } catch (e: any) {
+      // Handle abort signal specifically
+      if (e?.name === 'AbortError' || e?.message?.includes('aborted')) {
+        // Don't show error for abort - handled by stopGenerating
+      } else {
+        setError(e?.message || 'Something went wrong');
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
-      setLoading(false);
+      setSending(false);
+      abortRef.current = null;
     }
-  }, [canSend, input, mode, taskType, tone, detail, format, language, temperature, stylePreset, aspectRatio, includeTests, requireCitations, ensureChatId, appendMessages, hasLocalModel]);
+  }, [input, sending, ensureChat, appendMessages, mode, taskType, tone, detail, format, language, temperature, stylePreset, aspectRatio, includeTests, requireCitations]);
 
-  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      void send();
-    }
-  };
+  const stopGenerating = useCallback(() => {
+    try { 
+      abortRef.current?.abort(); 
+      // Add aborted message as a chat bubble
+      const abortedMsg: MessageItem = { 
+        id: crypto.randomUUID(), 
+        role: 'assistant', 
+        content: 'Response aborted' 
+      };
+      setMessages((m) => [...m, abortedMsg]);
+    } catch {}
+    setSending(false);
+  }, []);
 
-  const [loadingChatId, setLoadingChatId] = useState<string | null>(null);
-  const lastLoadedChatIdRef = useRef<string | null>(null);
+  const endRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, sending]);
+
+  const hasMessages = messages.length > 0;
+  const recentChats = useMemo(() => (chatList ?? []).slice().sort((a: any, b: any) => new Date(b.updatedAt as any).getTime() - new Date(a.updatedAt as any).getTime()), [chatList]);
+  const recentThree = useMemo(() => recentChats.slice(0, 3), [recentChats]);
+
+  // Chat selection & deletion
   const selectChat = useCallback(async (id: string) => {
-    setLoadingChatId(id);
+    // Optimistically set active selection for immediate visual feedback
+    const prevId = currentChatId;
+    setCurrentChatId(id);
     try {
       if (!chatList) void utils.chat.list.invalidate();
       const data = await utils.chat.get.fetch({ chatId: id, limit: 50 });
-      const loaded: MessageItem[] = data.messages.map((m: { id: string; role: string; content: string; userFeedback?: 'like' | 'dislike' }) => ({ id: m.id, role: m.role as any, content: m.content, userFeedback: m.userFeedback }));
+      const loaded: MessageItem[] = (data.messages ?? []).map((m: any) => ({ id: m.id, role: m.role, content: m.content, userFeedback: m.userFeedback }));
       setMessages(loaded);
-      setCurrentChatId(id);
-      lastLoadedChatIdRef.current = id;
-      setInput('');
-      try { localStorage.setItem('pc_current_chat', id); } catch {}
-      requestAnimationFrame(() => responseEndRef.current?.scrollIntoView({ behavior: 'smooth' }));
-    } catch (err) {
-      console.warn('Failed to load chat', err);
-      // show minimal inline error
+    } catch (e) {
       setError('Failed to load chat');
-      if (currentChatId === id) {
-        setCurrentChatId(null);
-        lastLoadedChatIdRef.current = null;
-      }
-    } finally {
-      setLoadingChatId(null);
+      setCurrentChatId(prevId ?? null);
     }
   }, [chatList, utils.chat.get, utils.chat.list, currentChatId]);
 
-  // When chat list loads, attempt to load last opened chat exactly once
-  useEffect(() => {
-    if (restoredLastChatRef.current) return;
-    if (!chatList) return;
-    if (currentChatId) { restoredLastChatRef.current = true; return; }
-    const target = initialChatIdRef.current;
-    if (target && (chatList as any[]).some(c => c.id === target)) {
-      restoredLastChatRef.current = true;
-      void selectChat(target);
-    } else {
-      if (target) {
-        try { localStorage.removeItem('pc_current_chat'); } catch {}
-      }
-      restoredLastChatRef.current = true;
-    }
-  }, [chatList, currentChatId, selectChat]);
-
-  // Retry loading currentChatId if messages are still empty and we haven't succeeded yet (guarded)
-  useEffect(() => {
-    if (!currentChatId) return;
-    if (messages.length > 0) return;
-    // only retry for a short window after selection
-    const t = setTimeout(() => { void selectChat(currentChatId); }, 100);
-    return () => clearTimeout(t);
-  }, [currentChatId, messages.length, selectChat]);
-
   const deleteChat = useCallback(async (id: string) => {
-    try {
-      await removeChat.mutateAsync({ chatId: id });
-      if (currentChatId === id) {
-        setCurrentChatId(null);
-        setMessages([]);
-      }
-      await utils.chat.list.invalidate();
-    } catch {
-      // noop
-    }
-  }, [removeChat, currentChatId, utils.chat.list]);
+    try { await removeChat.mutateAsync({ chatId: id }); await utils.chat.list.invalidate(); } catch {}
+    if (currentChatId === id) { setCurrentChatId(null); setMessages([]); }
+  }, [removeChat, utils.chat.list, currentChatId]);
 
-  const copyMessage = useCallback(async (id: string, text: string) => {
+  // Copy message content
+  const copyMessage = useCallback(async (messageId: string, content: string) => {
     try {
-      await navigator.clipboard.writeText(text);
-      setCopiedId(id);
-      window.setTimeout(() => {
-        setCopiedId((prev) => (prev === id ? null : prev));
-      }, 2000);
+      await navigator.clipboard.writeText(content);
+      setCopiedMessageId(messageId);
+      setTimeout(() => setCopiedMessageId(null), 2000);
     } catch {
-      // noop
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = content;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setCopiedMessageId(messageId);
+      setTimeout(() => setCopiedMessageId(null), 2000);
     }
   }, []);
 
-  return (
-    <div className="relative flex h-svh w-full overflow-hidden">
-    {/* Sidebar backdrop (mobile only) */}
-      <div
-        className={cn(
-          "fixed inset-0 z-30 bg-black/50 transition-opacity md:hidden",
-          sidebarOpen ? "opacity-100 visible" : "opacity-0 invisible pointer-events-none"
-        )}
-        onClick={() => setSidebarOpen(false)}
-      />
+  // Render message content with code block support
+  const renderMessageContent = useCallback((content: string, messageId: string) => {
+    const codeBlockRegex = /```(\w+)?\n?([\s\S]*?)```/g;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
 
-      {/* Sidebar */}
-      <div
-        className={cn(
-      // Mobile: slide-over controlled by state; Desktop: always visible static column
-      "fixed inset-y-0 left-0 z-40 w-80 -translate-x-full transform transition-transform duration-200 md:sticky md:top-0 md:h-svh md:inset-auto md:transform-none md:shrink-0 md:overflow-y-auto",
-      sidebarOpen ? "translate-x-0" : "-translate-x-full",
-      // Ensure always visible on desktop regardless of state
-      "md:translate-x-0"
-        )}
-      >
-  <FiltersSidebar
-          user={user}
-          // Close handler only relevant for mobile; ignored on desktop
-          onClose={() => { if (typeof window !== 'undefined' && !window.matchMedia('(min-width: 768px)').matches) setSidebarOpen(false); }}
-          openAccount={() => setAccountOpen(true)}
-          openInfo={() => setInfoOpen(true)}
-          presets={presets}
-          selectedPresetKey={selectedPresetKey}
-          setSelectedPresetKey={setSelectedPresetKey}
-          loadingPresets={loadingPresets}
-          applyPreset={applyPreset}
-          savePreset={savePreset}
-          refreshPresets={reloadPresets}
-          defaultPresetId={defaultPresetId}
-          setDefaultPresetId={setDefaultPresetId}
-          presetName={presetName}
-          setPresetName={setPresetName}
-          chats={useMemo(() => (chatList ?? []).map((c: { id: string; title?: string | null; updatedAt: string | Date; messageCount?: number; _count?: { messages: number } }) => ({ id: c.id, title: c.title ?? "Untitled", updatedAt: (typeof c.updatedAt === "string" ? new Date(c.updatedAt).getTime() : (c.updatedAt as Date).getTime()), messageCount: c.messageCount ?? (c._count?.messages ?? 0) })), [chatList])}
-          currentChatId={currentChatId}
-          onSelectChat={selectChat}
-          onDeleteChat={deleteChat}
-          taskType={taskType}
-          setTaskType={(v) => setTaskType(v)}
-          mode={mode}
-          setMode={(v) => setMode(v)}
-          tone={tone}
-          setTone={(v) => setTone(v)}
-          detail={detail}
-          setDetail={(v) => setDetail(v)}
-          format={format}
-          setFormat={(v) => setFormat(v)}
-          language={language}
-          setLanguage={setLanguage}
-          temperature={temperature}
-          setTemperature={setTemperature}
-          stylePreset={stylePreset}
-          setStylePreset={setStylePreset}
-          aspectRatio={aspectRatio}
-          setAspectRatio={setAspectRatio}
-          includeTests={includeTests}
-          setIncludeTests={setIncludeTests}
-          requireCitations={requireCitations}
-          setRequireCitations={setRequireCitations}
-        />
-      </div>
+    while ((match = codeBlockRegex.exec(content)) !== null) {
+      // Add text before code block
+      if (match.index > lastIndex) {
+        const textBefore = content.slice(lastIndex, match.index);
+        if (textBefore.trim()) {
+          parts.push(
+            <span key={`text-${lastIndex}`} style={{ whiteSpace: 'pre-wrap' }}>
+              {textBefore}
+            </span>
+          );
+        }
+      }
 
-      {/* Chat area */}
-      <div className="flex flex-1 min-h-0 flex-col">
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-gray-800 bg-gray-900/80 px-4 py-3 backdrop-blur">
-          <div className="flex items-center gap-3">
-            {/* Mobile toggle button only */}
+      const [, language, code] = match;
+      const codeId = `code-${messageId}-${match.index}`;
+      
+      parts.push(
+        <div key={`code-${match.index}`} className="bubble-code-block">
+          <div className="bubble-code-header">
+            <span className="bubble-code-lang">{language || 'code'}</span>
             <button
               type="button"
-              className="md:hidden rounded-md border border-gray-700 px-2 py-1 text-sm text-gray-200 transition hover:border-blue-500 hover:text-white"
+              className="bubble-code-copy"
+              onClick={() => copyMessage(codeId, code || '')}
+              title="Copy code"
+            >
+              <Icon name={copiedMessageId === codeId ? 'check' : 'copy'} />
+            </button>
+          </div>
+          <div className="bubble-code-content">{code}</div>
+        </div>
+      );
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    // Add remaining text
+    if (lastIndex < content.length) {
+      const remainingText = content.slice(lastIndex);
+      if (remainingText.trim()) {
+        parts.push(
+          <span key={`text-${lastIndex}`} style={{ whiteSpace: 'pre-wrap' }}>
+            {remainingText}
+          </span>
+        );
+      }
+    }
+
+    return parts.length > 0 ? <>{parts}</> : <span style={{ whiteSpace: 'pre-wrap' }}>{content}</span>;
+  }, [copyMessage, copiedMessageId]);
+
+  return (
+    <>
+    {/* Electron Titlebar */}
+    {isElectronRuntime() && <Titlebar />}
+    
+    <div className={isSmallScreen ? "app-shell--mobile" : "app-shell"} style={{ paddingTop: isElectronRuntime() ? 32 : 0 }}>
+      {/* Sidebar backdrop for mobile */}
+      {isSmallScreen && sidebarOpen && (
+        <div 
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 25 }}
+        onClick={() => setSidebarOpen(false)}
+      />
+      )}
+      
+      {/* Left rail (Material list of presets + chat history) */}
+      <aside className={isSmallScreen ? `app-rail--mobile ${sidebarOpen ? 'open' : ''}` : "app-rail"} style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 16 }}>
+        <button type="button" className="md-btn md-btn--primary" style={{ width: '100%' }} onClick={() => { setMessages([]); setCurrentChatId(null); setInput(""); }}>
+          New Chat
+        </button>
+
+        <div className="text-secondary" style={{ fontSize: 12, letterSpacing: 0.4 }}>CURRENT PRESET</div>
+        {loadingPresets ? (
+          <div className="text-secondary" style={{ fontSize: 12 }}>Loading…</div>
+        ) : (
+          <>
+            {selectedPresetKey ? (
+              (() => {
+                const selectedPreset = presets.find(p => (p.id ?? p.name) === selectedPresetKey);
+                return selectedPreset ? (
+                  <div className="md-card" style={{ padding: 12, borderRadius: 10, borderColor: 'var(--color-primary)', boxShadow: 'var(--shadow-2)' }}>
+                    <div style={{ fontWeight: 600 }}>{selectedPreset.name}</div>
+                    <div className="text-secondary" style={{ fontSize: 11, marginTop: 2 }}>{selectedPreset.taskType.charAt(0).toUpperCase() + selectedPreset.taskType.slice(1)}</div>
+                  </div>
+                ) : (
+                  <div className="text-secondary" style={{ fontSize: 12 }}>No preset selected</div>
+                );
+              })()
+            ) : (
+              <div className="text-secondary" style={{ fontSize: 12 }}>No preset selected</div>
+            )}
+            
+            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+              <button className="md-btn" onClick={() => setPresetSelectorOpen(true)} style={{ flex: 1 }}>
+                Select Preset
+              </button>
+              <button className="md-btn" onClick={() => {
+                const sel = presets.find(p => (p.id ?? p.name) === selectedPresetKey);
+                if (sel) {
+                  // Prefill editor with selected values for editing
+                  setPresetName(sel.name);
+                  setTaskType(sel.taskType as any);
+                  const o = sel.options || {};
+                  setTone(o.tone ?? 'neutral');
+                  setDetail(o.detail ?? 'normal');
+                  setFormat(o.format ?? 'markdown');
+                  setLanguage(o.language ?? 'English');
+                  setTemperature(typeof o.temperature === 'number' ? o.temperature : 0.7);
+                  setStylePreset(o.stylePreset ?? 'photorealistic');
+                  setAspectRatio(o.aspectRatio ?? '1:1');
+                  setIncludeTests(!!o.includeTests);
+                  setRequireCitations(!!o.requireCitations);
+                } else {
+                  // Create new preset with current settings (don't change selection)
+                  setPresetName("");
+                  // Keep current settings as starting point
+                }
+                setPresetEditorOpen(true);
+              }}>
+                {selectedPresetKey ? 'Edit' : 'Create'}
+              </button>
+      </div>
+          </>
+        )}
+
+        {/* Recent chats pinned to bottom */}
+        <div style={{ marginTop: 'auto' }}>
+          <div className="text-secondary" style={{ fontSize: 11, letterSpacing: 0.4, marginBottom: 8 }}>RECENT CHATS</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {recentThree.map((c: any) => {
+              const isActive = currentChatId === c.id;
+              return (
+            <button
+                  key={c.id}
+              type="button"
+                  onClick={() => { void selectChat(c.id); }}
+                  title={c.title ?? 'Untitled'}
+                  style={{
+                    textAlign: 'left',
+                    background: 'transparent',
+                    border: 'none',
+                    padding: '4px 0',
+                    cursor: 'pointer',
+                    color: isActive ? 'var(--color-on-surface)' : 'var(--color-on-surface-variant)',
+                    fontSize: 13,
+                    fontWeight: isActive ? 600 : 400,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    transition: 'color 120ms ease'
+                  }}
+                >
+                  {(c.title ?? 'Untitled') + ' ...'}
+            </button>
+              );
+            })}
+            {recentThree.length === 0 && (
+              <div className="text-secondary" style={{ fontSize: 12, padding: '4px 0' }}>No chats yet</div>
+            )}
+            </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+            <button className="md-btn" style={{ padding: '4px 8px', fontSize: 12 }} onClick={() => setShowAllChatsOpen(true)}>Show all</button>
+          </div>
+            </div>
+      </aside>
+
+      {/* Main content */}
+      <section className={isSmallScreen ? "app-content--mobile" : "app-content"} style={{ display: 'flex', flexDirection: 'column' }}>
+        {/* Header actions */}
+        <div className="app-header" style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          {/* Hamburger menu for mobile */}
+          {isSmallScreen && (
+              <button
+              className="md-btn" 
+              style={{ padding: 8 }} 
               onClick={() => setSidebarOpen((v) => !v)}
-              aria-label="Open filters sidebar"
               title="Toggle sidebar"
             >
-              <Icon name="bars" />
+              ☰
+              </button>
+          )}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ position: 'relative' }}>
+              <button className="md-btn" style={{ padding: 8, display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => setThemeMenuOpen((v) => !v)} title="Change theme">
+                <Icon name="palette" />
+                <Icon name="chevronDown" className={`dropdown-arrow ${themeMenuOpen ? 'dropdown-arrow--open' : ''}`} />
+              </button>
+              {themeMenuOpen && (
+                <div className="menu-panel" style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', minWidth: 180 }}>
+                  {themes.map((theme) => (
+              <button
+                      key={theme.id} 
+                      className="menu-item" 
+                      onClick={() => setTheme(theme.id as 'default' | 'warm' | 'light')}
+                      style={{ 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        alignItems: 'flex-start',
+                        background: currentTheme === theme.id ? 'var(--color-primary)' : 'transparent',
+                        color: currentTheme === theme.id ? 'var(--color-on-primary)' : 'var(--color-on-surface)'
+                      }}
+                    >
+                      <div style={{ fontWeight: 600 }}>{theme.name}</div>
+              </button>
+                  ))}
+            </div>
+          )}
+        </div>
+            <button className="md-btn" style={{ padding: 8, display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => setSettingsMenuOpen((v) => !v)}>
+              Settings
+              <Icon name="chevronDown" className={`dropdown-arrow ${settingsMenuOpen ? 'dropdown-arrow--open' : ''}`} />
             </button>
-            <div className="flex items-center text-lg font-semibold text-blue-400">
-              <Image src="/icon.png" alt="PromptCrafter icon" width={20} height={20} className="w-4 h-4 mr-2" priority />
-              PromptCrafter{modelDisplay && <span className="ml-2 text-sm font-normal text-gray-400">- {modelDisplay}</span>}
-            </div>
           </div>
         </div>
 
-        {/* Mobile preset row below header */}
-        <div className="sm:hidden border-b border-gray-800 bg-gray-900/80 px-3 py-2">
-          <div className="mx-auto w-full max-w-3xl">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] uppercase tracking-wider text-gray-400">Preset</span>
-              <div className="relative flex-1">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs">{defaultPresetId && currentPreset?.id === defaultPresetId ? <Icon name="star" className="text-amber-400" /> : <Icon name="sliders" />}</span>
-                <CustomSelect
-                  value={selectedPresetKey}
-                  onChange={(key) => {
-                    setSelectedPresetKey(key);
-                    const p = presets.find((x) => (x.id ?? x.name) === key);
-                    if (p) applyPreset(p);
-                  }}
-                  options={[
-                    { value: "", label: "Apply preset…", disabled: true },
-                    ...presets.map((p) => ({
-                      value: p.id ?? p.name,
-                      label: `${(defaultPresetId && p.id === defaultPresetId) ? "(Default) " : ""}${p.name}`
-                    }))
-                  ]}
-                  aria-label="Apply preset"
-                  title={currentPreset?.name || "Apply preset"}
-                  className="w-full pl-8 pr-7 py-2 text-xs rounded-full"
-                />
-                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">▾</span>
+        {/* Content area (scrolls) */}
+        <div style={{ padding: 24, paddingBottom: 200, flex: 1, overflow: 'auto' }}>
+          <div style={{ width: '100%', maxWidth: '1400px', margin: '0 auto' }}>
+            {!hasMessages ? (
+              <div>
+                <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 24 }}>How can I help you craft prompts today?</h1>
               </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex-1 min-h-0 overflow-y-auto p-3 md:p-4">
-          <div className="mx-auto w-full max-w-3xl">
-            {messages.length === 0 ? (
-              <p className="text-sm text-gray-400">Start by typing a request below and press Send.</p>
             ) : (
-              <div className="flex flex-col gap-3">
-                {messages.map((m) => {
-                  const isUser = m.role === "user";
-                  return (
-                    <div key={m.id} className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}>
-                      <div
-                        className={
-                          "relative min-w-0 max-w-[92vw] sm:max-w-[85%] md:max-w-[80%] whitespace-pre-wrap break-words rounded-2xl px-4 py-3 pr-9 text-sm shadow-sm transition-[max-width,transform,background-color] duration-200 " +
-                          (isUser
-                            ? "rounded-br-sm bg-indigo-600 text-white"
-                            : "rounded-bl-sm bg-gray-800 text-gray-100")
-                        }
-                      >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {messages.map((m) => (
+                  <div key={m.id} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                    <div className="bubble-container">
+                      <div className={`bubble ${m.role === 'user' ? 'bubble--user' : 'bubble--assistant'}`}>
                         {renderMessageContent(m.content, m.id)}
-                        <button
-                          type="button"
-                          aria-label="Copy message"
-                          onClick={() => void copyMessage(m.id, m.content)}
-                          className="absolute right-2 top-2 rounded p-1 opacity-70 transition-opacity hover:bg-white/10 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-white/20"
-                        >
-                          {copiedId === m.id ? (
-                            <svg className="h-4 w-4 text-emerald-400" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                              <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          ) : (
-                            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                              <path d="M9 9h9v12H9z" stroke="currentColor" strokeWidth="1.5" fill="currentColor" opacity="0.2" />
-                              <path d="M6 3h9v12H6z" stroke="currentColor" strokeWidth="1.5" fill="currentColor" />
-                            </svg>
-                          )}
-                        </button>
-                        {!isUser && (
-                          <div className="mt-3 -mb-1 border-t border-white/5 pt-2">
+
+                      {m.role === 'assistant' && m.content !== 'Response aborted' && (
+                        <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--color-outline)' }}>
                             <MessageFeedback
                               messageId={m.id}
                               initialFeedback={m.userFeedback ?? null}
                               onChange={(fb) => {
-                                setMessages(prev => prev.map(msg => msg.id === m.id ? { ...msg, userFeedback: fb ?? undefined } : msg));
+                              setMessages((prev) => prev.map((msg) => 
+                                msg.id === m.id ? (fb ? { ...msg, userFeedback: fb } : { ...msg, userFeedback: undefined }) : msg
+                              ));
                               }}
                             />
                           </div>
                         )}
                       </div>
+                      
+                      {/* Copy button outside bubble */}
+                      <button
+                        type="button"
+                        className={`bubble-copy ${m.role === 'user' ? 'bubble-copy--user' : 'bubble-copy--assistant'}`}
+                        onClick={() => copyMessage(m.id, m.content)}
+                        title="Copy message"
+                      >
+                        <Icon name={copiedMessageId === m.id ? 'check' : 'copy'} />
+                      </button>
                     </div>
-                  );
-                })}
-                {loading && (
-                  <div className="self-start">
-                    <div className="relative max-w-[80%] rounded-2xl rounded-bl-sm bg-gray-800 px-4 py-3 pr-9 text-sm text-gray-100 shadow-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                        <span>Generating{".".repeat(genDots)}</span>
                       </div>
+                ))}
+                {sending && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 12 }}>
+                    <div className="bubble bubble--assistant" style={{ opacity: .95, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 14, height: 14, border: '2px solid var(--color-on-surface-variant)', borderTopColor: 'var(--color-primary)', borderRadius: '50%' }} className="md-spin" />
+                      <span>Generating</span>
+                      <AnimatedDots />
+                      <button
+                        type="button"
+                        title="Stop generating"
+                        onClick={stopGenerating}
+                        style={{ 
+                          marginLeft: 12, 
+                          width: '28px',
+                          height: '28px',
+                          borderRadius: '50%', 
+                          border: '1px solid #dc2626', 
+                          background: 'rgba(220, 38, 38, 0.1)', 
+                          color: '#dc2626',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          transition: 'all 150ms ease',
+                          boxShadow: '0 2px 4px rgba(220, 38, 38, 0.2)'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = '#dc2626';
+                          e.currentTarget.style.color = '#ffffff';
+                          e.currentTarget.style.transform = 'scale(1.05)';
+                          e.currentTarget.style.boxShadow = '0 4px 8px rgba(220, 38, 38, 0.3)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'rgba(220, 38, 38, 0.1)';
+                          e.currentTarget.style.color = '#dc2626';
+                          e.currentTarget.style.transform = 'scale(1)';
+                          e.currentTarget.style.boxShadow = '0 2px 4px rgba(220, 38, 38, 0.2)';
+                        }}
+                      >
+                        <Icon name="stop" />
+                      </button>
                     </div>
                   </div>
                 )}
-                <div ref={responseEndRef} />
+                <div ref={endRef} />
               </div>
             )}
+
             {error && (
-              <div className="mt-3 rounded-md border border-red-700 bg-red-900/30 p-3 text-sm text-red-300">{error}</div>
+              <div className="md-card" style={{ padding: 12, marginTop: 12, borderLeft: '4px solid var(--color-primary)' }}>{error}</div>
             )}
           </div>
         </div>
 
-        <div className="sticky bottom-0 z-10 border-t border-gray-800 bg-gray-900/80 px-3 py-3 backdrop-blur md:px-4">
-          <div className="mx-auto w-full max-w-3xl">
-            <div className="flex items-end gap-3">
-              <div className="relative hidden sm:block">
-                <label className="sr-only">Preset</label>
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs">{defaultPresetId && currentPreset?.id === defaultPresetId ? <Icon name="star" className="text-amber-400" /> : <Icon name="sliders" />}</span>
-                <CustomSelect
-                  value={selectedPresetKey}
-                  onChange={(key) => {
-                    setSelectedPresetKey(key);
-                    const p = presets.find((x) => (x.id ?? x.name) === key);
-                    if (p) applyPreset(p);
-                  }}
-                  options={[
-                    { value: "", label: "Apply preset…", disabled: true },
-                    ...presets.map((p) => ({
-                      value: p.id ?? p.name,
-                      label: `${(defaultPresetId && p.id === defaultPresetId) ? "(Default) " : ""}${p.name}`
-                    }))
-                  ]}
-                  aria-label="Apply preset"
-                  title={currentPreset?.name || "Apply preset"}
-                  className="w-64 h-11 shrink-0 pl-8 pr-8 text-xs rounded-2xl"
-                />
-                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">▾</span>
-              </div>
+        {/* Floating Composer */}
+        <div style={{ position: 'fixed', bottom: 24, left: isSmallScreen ? 24 : 344, right: 24, zIndex: 20 }}>
+          <div style={{ width: '100%', maxWidth: '1400px', margin: '0 auto' }}>
+            <div className="md-card" style={{ padding: '16px', borderRadius: '20px', background: 'var(--color-surface-variant)', border: '1px solid var(--color-outline)' }}>
+              {/* Text input (full width) */}
               <textarea
-                ref={inputRef}
                 value={input}
-                onInput={autoResize}
-                onChange={(e) => {
-                  setInput(e.target.value);
-                  // Ensure smooth growth while typing even if onInput coalesces
-                  autoResize();
-                }}
-                onKeyDown={onKeyDown}
-                placeholder={mode === "build" ? "Describe the prompt you want to build..." : "Paste a prompt to enhance it..."}
-                className="flex-1 resize-none rounded-2xl border border-white/10 bg-gray-900/60 p-3 text-sm text-gray-100 shadow-sm transition-[height] duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-400/50"
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
+                placeholder="Send a message to start crafting prompts…"
+                className="md-input"
                 rows={1}
-                style={{ maxHeight: MAX_INPUT_HEIGHT, overflowY: "auto" }}
+                style={{ resize: 'none', minHeight: 40, maxHeight: 160, background: 'var(--color-surface)', border: '1px solid var(--color-outline)', marginBottom: 12, width: '100%' }}
               />
+
+              {/* Controls row below input */}
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
+                {/* Model selection (left) */}
+                <div style={{ position: 'relative' }}>
+                  <button ref={modelBtnRef} type="button" className="md-btn" title="Select model" onClick={() => {
+                    const wasOpen = modelMenuOpen;
+                    setModelMenuOpen((v) => !v);
+                    // Auto-refresh models when opening dropdown
+                    if (!wasOpen) {
+                      refreshModels();
+                    }
+                  }} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {modelLabel}
+                    <Icon name="chevronDown" className={`dropdown-arrow ${modelMenuOpen ? 'dropdown-arrow--open' : ''}`} />
+                  </button>
+                  {modelMenuOpen && (
+                    <div
+                      ref={modelMenuRef}
+                      className="menu-panel"
+                      style={{ position: 'absolute', left: 0, top: modelMenuUp ? 'auto' : 'calc(100% + 6px)', bottom: modelMenuUp ? 'calc(100% + 6px)' : 'auto', maxHeight: 320, overflowY: 'auto' }}
+                    >
+                      {availableModels.length > 0 ? (
+                        availableModels.map((m) => (
+                          <button key={m} className="menu-item" onClick={async () => {
+                            await fetch('/api/model/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: 'ollama', baseUrl: 'http://localhost:11434', model: m }) });
+                            setModelLabel(`Gemma 3 ${(m.split(':')[1] || '').toUpperCase()}`);
+                            setModelMenuOpen(false);
+                          }}>{`Gemma 3 ${(m.split(':')[1] || '').toUpperCase()}`}</button>
+                        ))
+                      ) : (
+                        <div>
+                          <div className="menu-item" style={{ opacity: 0.6, cursor: 'default' }}>No local models found</div>
+                          <button className="menu-item" onClick={() => { refreshModels(); }} style={{ color: 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <Icon name="refresh" />
+                            Refresh
+                          </button>
+                          <div className="menu-divider" />
+                          <div className="menu-item" style={{ opacity: 0.6, cursor: 'default', fontSize: 12, padding: '8px 12px' }}>
+                            Install Ollama and pull gemma3 models:<br/>
+                            <code style={{ fontSize: 11 }}>ollama pull gemma3:1b</code>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Mode + Send (right) */}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div className="mode-toggle">
+                    <div className={`mode-toggle-slider ${mode === 'enhance' ? 'mode-toggle-slider--enhance' : ''}`} />
+                <button
+                  type="button"
+                      className={`mode-toggle-option ${mode === 'build' ? 'mode-toggle-option--active' : 'mode-toggle-option--inactive'}`}
+                      onClick={() => setMode('build')}
+                    >
+                  Build
+                </button>
+                <button
+                  type="button"
+                      className={`mode-toggle-option ${mode === 'enhance' ? 'mode-toggle-option--active' : 'mode-toggle-option--inactive'}`}
+                      onClick={() => setMode('enhance')}
+                    >
+                  Enhance
+                </button>
+            </div>
+
               <button
+                  type="button"
+                    className="md-btn md-btn--primary" 
                 onClick={() => void send()}
-                disabled={!canSend}
-                className="rounded-lg bg-indigo-600 px-5 py-2.5 font-semibold text-white shadow-sm transition enabled:hover:bg-indigo-700 disabled:opacity-60"
-              >
-                Send
-              </button>
-              <button
-                type="button"
-                onClick={startNewChat}
-                className="flex h-11 w-11 items-center justify-center rounded-lg border border-white/10 bg-gray-800 text-white shadow-sm transition hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-400/50"
-                aria-label="Start a new chat"
-                title="New chat"
-              >
-                <span className="text-lg font-light">+</span>
+                    disabled={!input.trim() || sending}
+                    style={{ width: 40, height: 40, borderRadius: '50%', padding: 0 }}
+                    title="Send message"
+                  >
+                    ↑
               </button>
             </div>
           </div>
         </div>
+        </div>
+        </div>
+      </section>
+    </div>
+    {/* App Settings Menu (top-right) */}
+    {settingsMenuOpen && (
+      <div className="fixed inset-0 z-50" onClick={() => setSettingsMenuOpen(false)}>
+        <div className="menu-panel" style={{ position: 'absolute', right: 16, top: 56 }} onClick={(e) => e.stopPropagation()}>
+          <button className="menu-item" onClick={() => { try { window.dispatchEvent(new CustomEvent('open-db-location')); } catch {}; setSettingsMenuOpen(false); }}>Data Location</button>
+          <button className="menu-item" onClick={() => { try { window.dispatchEvent(new CustomEvent('open-system-prompts')); } catch {}; setSettingsMenuOpen(false); }}>System Prompts</button>
+          {/* Model Configuration removed - selection handled via model dropdown */}
+          <button className="menu-item" onClick={() => { setRagInfoOpen(true); setSettingsMenuOpen(false); }}>RAG Learning Data</button>
+        </div>
+      </div>
+    )}
 
-        {(accountOpen || infoOpen) && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center"
-            aria-modal="true"
-            role="dialog"
-            aria-label={infoOpen ? "Prompt settings info" : "Saved Data"}
-          >
-            <div className="absolute inset-0 bg-black/60" onClick={() => { setAccountOpen(false); setInfoOpen(false); }} />
-            <div
-              className="relative z-10 w-[92vw] max-w-xl rounded-xl border border-white/10 bg-gray-900 p-5 text-gray-100 shadow-2xl max-h-[85vh] overflow-y-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
+    {/* All Chats Modal */}
+    {showAllChatsOpen && (
+      <div className="modal-container" aria-modal="true" role="dialog" onClick={() => setShowAllChatsOpen(false)}>
+        <div className="modal-backdrop-blur" />
+        <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-header">
+            <div className="modal-title">All Chats</div>
+            <button className="md-btn" onClick={() => setShowAllChatsOpen(false)} style={{ padding: '6px 10px' }}>Close</button>
+          </div>
+          <div className="modal-body">
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 6 }}>
+              {(recentChats).map((c: any) => {
+                const isActive = currentChatId === c.id;
+                return (
+                  <li key={c.id}>
               <button
                 type="button"
-                onClick={() => { setAccountOpen(false); setInfoOpen(false); }}
-                className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-700 text-gray-300 transition hover:border-red-500 hover:text-white"
-                aria-label="Close help"
-                title="Close"
-              >
-                <Icon name="close" />
+                      aria-current={isActive ? 'true' : undefined}
+                      className="md-btn"
+                      style={{
+                        width: '100%',
+                        justifyContent: 'space-between',
+                        padding: '10px 12px',
+                        background: isActive ? 'rgba(108,140,255,0.12)' : 'transparent',
+                        outline: isActive ? '2px solid var(--color-primary)' : 'none',
+                        outlineOffset: -2,
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => { void selectChat(c.id); setShowAllChatsOpen(false); }}
+                    >
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: isActive ? 600 : 500 }}>{c.title ?? 'Untitled'}</span>
+                      <span className="text-secondary" style={{ fontSize: 12 }}>{new Date(c.updatedAt as any).toLocaleString()}</span>
               </button>
-              <div className="mb-3 text-lg font-semibold">{infoOpen ? "Prompt Settings Info" : "Saved Data"}</div>
-              {infoOpen ? (
-                <div className="space-y-4 text-sm">
-                  <div className="rounded-lg border border-gray-800 bg-gray-800/40 p-3">
-                    <div className="font-medium">Preset Name</div>
-                    <div className="mt-1 text-gray-300">The name of your preset. Use it to save, find, and reapply settings quickly.</div>
-                  </div>
-                  <div className="rounded-lg border border-gray-800 bg-gray-800/40 p-3">
-                    <div className="font-medium">Type</div>
-                    <ul className="mt-1 list-disc space-y-1 pl-5 text-gray-300">
-                      <li><strong>General</strong>: Balanced for everyday tasks.</li>
-                      <li><strong>Coding</strong>: Tailored for code. <em>Include tests</em> asks the model to generate tests with solutions.</li>
-                      <li><strong>Image</strong>: Generates image prompts. Configure <em>Image Style</em> (e.g., Photorealistic, Illustration) and <em>Aspect Ratio</em> (e.g., 1:1, 16:9).</li>
-                      <li><strong>Research</strong>: Oriented for factual outputs. <em>Require citations</em> asks for sources where possible.</li>
-                      <li><strong>Writing</strong>: For articles, stories, emails, etc.</li>
-                      <li><strong>Marketing</strong>: For ads, landing copy, and campaigns.</li>
+                  </li>
+                );
+              })}
                     </ul>
                   </div>
-                  <div className="grid grid-cols-1 gap-3">
-                    <div className="rounded-lg border border-gray-800 bg-gray-800/40 p-3">
-                      <div className="font-medium">Mode</div>
-                      <ul className="mt-1 list-disc space-y-1 pl-5 text-gray-300">
-                        <li><strong>Build</strong>: Create a prompt from your description.</li>
-                        <li><strong>Enhance</strong>: Improve or refactor an existing prompt.</li>
-                      </ul>
                     </div>
-                    <div className="rounded-lg border border-gray-800 bg-gray-800/40 p-3">
-                      <div className="font-medium">Tone</div>
-                      <div className="mt-1 text-gray-300">Style of voice: <em>Neutral, Friendly, Formal, Technical, Persuasive</em>.</div>
                     </div>
-                    <div className="rounded-lg border border-gray-800 bg-gray-800/40 p-3">
-                      <div className="font-medium">Detail</div>
-                      <div className="mt-1 text-gray-300">How comprehensive the output should be: <em>Brief, Normal, Detailed</em>.</div>
+    )}
+    {/* Removed separate preset manage menu; Manage opens the editor directly */}
+
+    {/* Preset Editor Modal */}
+    {presetEditorOpen && (
+      <div className="modal-container" aria-modal="true" role="dialog" onClick={() => setPresetEditorOpen(false)}>
+        <div className="modal-backdrop-blur" />
+        <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-header">
+            <div className="modal-title">Edit Preset</div>
+            <button className="md-btn" onClick={() => setPresetEditorOpen(false)} style={{ padding: '6px 10px' }}>Close</button>
                     </div>
-                    <div className="rounded-lg border border-gray-800 bg-gray-800/40 p-3">
-                      <div className="font-medium">Format</div>
-                      <div className="mt-1 text-gray-300">Preferred output: <em>Plain</em> text, <em>Markdown</em>, or <em>JSON</em>.</div>
+          <div className="modal-body">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label className="text-secondary" style={{ fontSize: 12 }}>Preset Name&emsp;</label>
+              <input className="md-input" value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder="Preset name" />
                     </div>
-                    <div className="rounded-lg border border-gray-800 bg-gray-800/40 p-3">
-                      <div className="font-medium">Language</div>
-                      <div className="mt-1 text-gray-300">Choose output language: English, Dutch, Arabic, Mandarin Chinese, Spanish, French, Russian, Urdu.</div>
+            <div>
+              <label className="text-secondary" style={{ fontSize: 12 }}>Type</label>
+              <CustomSelect value={taskType} onChange={(v) => setTaskType(v as any)} options={[{value:'general',label:'General'},{value:'coding',label:'Coding'},{value:'image',label:'Image'},{value:'research',label:'Research'},{value:'writing',label:'Writing'},{value:'marketing',label:'Marketing'}]} />
                     </div>
-                    <div className="rounded-lg border border-gray-800 bg-gray-800/40 p-3">
-                      <div className="font-medium">Temperature</div>
-                      <div className="mt-1 text-gray-300">Controls randomness (0.1–1.0). Lower = more focused and deterministic; higher = more creative.</div>
+            <div>
+              <label className="text-secondary" style={{ fontSize: 12 }}>Tone</label>
+              <CustomSelect value={tone} onChange={(v) => setTone(v as any)} options={[{value:'neutral',label:'Neutral'},{value:'friendly',label:'Friendly'},{value:'formal',label:'Formal'},{value:'technical',label:'Technical'},{value:'persuasive',label:'Persuasive'}]} />
                     </div>
+            <div>
+              <label className="text-secondary" style={{ fontSize: 12 }}>Detail</label>
+              <CustomSelect value={detail} onChange={(v) => setDetail(v as any)} options={[{value:'brief',label:'Brief'},{value:'normal',label:'Normal'},{value:'detailed',label:'Detailed'}]} />
                   </div>
+            <div>
+              <label className="text-secondary" style={{ fontSize: 12 }}>Format</label>
+              <CustomSelect value={format} onChange={(v) => setFormat(v as any)} options={[{value:'plain',label:'Plain'},{value:'markdown',label:'Markdown'},{value:'json',label:'JSON'}]} />
                 </div>
-              ) : (
-                <div className="space-y-4 text-sm">
-                  <div className="flex items-center gap-3 rounded-lg border border-gray-800 bg-gray-800/40 p-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-700 text-sm text-white"><Icon name="db" /></div>
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-medium text-gray-100">Saved Data</div>
-                      <div className="text-xs text-gray-400">Manage locally stored chats & presets.</div>
+            <div>
+              <label className="text-secondary" style={{ fontSize: 12 }}>Language</label>
+              <CustomSelect value={language} onChange={(v) => setLanguage(v)} options={[{value:'English',label:'English'},{value:'Dutch',label:'Dutch'},{value:'Arabic',label:'Arabic'},{value:'Mandarin Chinese',label:'Mandarin Chinese'},{value:'Spanish',label:'Spanish'},{value:'French',label:'French'},{value:'Russian',label:'Russian'},{value:'Urdu',label:'Urdu'}]} />
                     </div>
+            {taskType === 'image' && (
+              <>
+                <div>
+                  <label className="text-secondary" style={{ fontSize: 12 }}>Image Style</label>
+                  <CustomSelect value={stylePreset} onChange={(v) => setStylePreset(v)} options={[{value:'photorealistic',label:'Photorealistic'},{value:'illustration',label:'Illustration'},{value:'3d',label:'3D'},{value:'anime',label:'Anime'},{value:'watercolor',label:'Watercolor'}]} />
                   </div>
-                  <div className="rounded-lg border border-gray-800 bg-gray-800/40 p-3">
-                    <div className="font-medium">Privacy</div>
-                    <div className="mt-2 text-gray-300">Delete all your chats and presets from this app.</div>
+                <div>
+                  <label className="text-secondary" style={{ fontSize: 12 }}>Aspect Ratio</label>
+                  <CustomSelect value={aspectRatio} onChange={(v) => setAspectRatio(v)} options={[{value:'1:1',label:'1:1'},{value:'16:9',label:'16:9'},{value:'9:16',label:'9:16'},{value:'4:3',label:'4:3'}]} />
+                  </div>
+              </>
+              )}
+                  </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+              <button className="md-btn" onClick={() => setPresetEditorOpen(false)}>Cancel</button>
+              <button className="md-btn md-btn--primary" onClick={async () => { await savePreset(); await reloadPresets(); setPresetEditorOpen(false); }}>Save</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* RAG Info Modal */}
+    {ragInfoOpen && (
+      <div className="modal-container" aria-modal="true" role="dialog" onClick={() => setRagInfoOpen(false)}>
+        <div className="modal-backdrop-blur" />
+        <div className="modal-content modal-content--large" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-header">
+            <div className="modal-title">RAG Learning Data</div>
+            <button className="md-btn" onClick={() => setRagInfoOpen(false)} style={{ padding: '6px 10px' }}>Close</button>
+          </div>
+          <div className="modal-body">
+            <RagInfoViewer />
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Preset Selector Modal */}
+    {presetSelectorOpen && (
+      <div className="modal-container" aria-modal="true" role="dialog" onClick={() => setPresetSelectorOpen(false)}>
+        <div className="modal-backdrop-blur" />
+        <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-header">
+            <div className="modal-title">Select Preset</div>
+            <button className="md-btn" onClick={() => setPresetSelectorOpen(false)} style={{ padding: '6px 10px' }}>Close</button>
+          </div>
+          <div className="modal-body">
+            <div style={{ display: 'grid', gap: 12 }}>
+              {/* Create New Preset button at top */}
                     <button
-                      type="button"
-                      className="mt-3 rounded-md border border-red-600 bg-red-600/10 px-3 py-2 text-xs font-semibold text-red-300 transition hover:bg-red-600/20"
+                className="md-btn md-btn--primary" 
                       onClick={() => {
-                        const box = document.createElement("div");
-                        box.className = "fixed inset-0 z-50 flex items-center justify-center";
-                        box.innerHTML = `
-                          <div class=\"absolute inset-0 bg-black/60\"></div>
-                          <div class=\"relative z-10 w-[92vw] max-w-sm rounded-xl border border-white/10 bg-gray-900 p-4 text-gray-100 shadow-2xl\">\n                            <div class=\"text-base font-semibold mb-2\">Delete all data?</div>\n                            <div class=\"text-sm text-gray-300\">This will delete all chats and presets. This cannot be undone.</div>\n                            <div class=\"mt-4 flex items-center justify-end gap-2\">\n                              <button id=\"pc_cancel\" class=\"rounded-md border border-gray-600 bg-gray-800 px-3 py-1.5 text-sm\">Cancel</button>\n                              <button id=\"pc_confirm\" class=\"rounded-md border border-red-600 bg-red-600/20 px-3 py-1.5 text-sm text-red-200\">Delete</button>\n                            </div>\n                          </div>`;
-                        document.body.appendChild(box);
-                        const remove = () => box.remove();
-                        document.getElementById("pc_cancel")?.addEventListener("click", () => remove(), { once: true });
-                        document.getElementById("pc_confirm")?.addEventListener("click", async () => {
-                          try {
-                            try {
-                              const list = await utils.chat.list.fetch();
-                              for (const c of list ?? []) {
-                                try { await removeChat.mutateAsync({ chatId: c.id }); } catch {}
-                              }
-                            } catch {}
-                            try {
-                              const res = await fetch('/api/presets');
-                              const data = await res.json();
-                              const ps = Array.isArray(data?.presets) ? data.presets : [];
-                              for (const p of ps) {
-                                try { await fetch(`/api/presets?id=${encodeURIComponent(p.id)}`, { method: 'DELETE' }); } catch {}
-                              }
-                            } catch {}
-                          } finally { remove(); }
-                        }, { once: true });
-                      }}
-                    >
-                      Delete all chat history and saved prompt presets
+                  // Don't change selectedPresetKey - keep current selection
+                  setPresetName("");
+                  // Reset form to defaults for new preset creation
+                  setTaskType("general");
+                  setTone("neutral");
+                  setDetail("normal");
+                  setFormat("markdown");
+                  setLanguage("English");
+                  setTemperature(0.7);
+                  setStylePreset("photorealistic");
+                  setAspectRatio("1:1");
+                  setIncludeTests(true);
+                  setRequireCitations(true);
+                  setPresetEditorOpen(true);
+                  setPresetSelectorOpen(false);
+                }}
+                style={{ padding: '12px 16px' }}
+              >
+                + Create New Preset
                     </button>
-                  </div>
+
+              {presets.length > 0 ? (
+                presets.map((p) => {
+                  const isSel = (p.id ?? p.name) === selectedPresetKey;
+                  const presetId = p.id ?? p.name;
+                  const isDeleting = deletingPresetId === presetId;
+                  
+                  return (
+                    <div key={presetId} className="md-card" style={{ 
+                      padding: 16, 
+                      borderRadius: 12, 
+                      position: 'relative',
+                      borderColor: isSel ? 'var(--color-primary)' : 'var(--color-outline)',
+                      borderWidth: isSel ? '2px' : '1px'
+                    }}>
+                      <div
+                        style={{
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          background: 'transparent',
+                          color: isSel ? 'var(--color-primary)' : 'var(--color-on-surface)',
+                          padding: 0,
+                          border: 'none'
+                        }}
+                        onClick={() => { 
+                          setSelectedPresetKey(presetId); 
+                          applyPreset(p); 
+                          setPresetSelectorOpen(false);
+                        }}
+                      >
+                        <div style={{ fontWeight: 600, marginBottom: 4 }}>{p.name}</div>
+                        <div style={{ fontSize: 12, opacity: 0.8 }}>{p.taskType.charAt(0).toUpperCase() + p.taskType.slice(1)}</div>
+                        {p.options && (
+                          <div style={{ fontSize: 11, marginTop: 6, opacity: 0.7 }}>
+                            {p.options.tone && `${p.options.tone} tone`}
+                            {p.options.detail && ` • ${p.options.detail} detail`}
+                            {p.options.format && ` • ${p.options.format}`}
                 </div>
               )}
             </div>
+                      
+                      {/* Delete button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deletePreset(presetId, p.name);
+                        }}
+                        disabled={isDeleting}
+                        className="md-btn"
+                        style={{ 
+                          position: 'absolute',
+                          top: 12,
+                          right: 12,
+                          padding: '4px 8px',
+                          fontSize: 11,
+                          opacity: isDeleting ? 0.6 : 1
+                        }}
+                        title={`Delete preset "${p.name}"`}
+                      >
+                        {isDeleting ? '...' : 'Delete'}
+                      </button>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-secondary" style={{ textAlign: 'center', padding: 24 }}>
+                  No presets available. Create your first preset to get started.
           </div>
         )}
       </div>
     </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
-
+function AnimatedDots() {
+  const [ticks, setTicks] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTicks((t) => (t + 1) % 3), 500);
+    return () => clearInterval(id);
+  }, []);
+  const dots = '.'.repeat((ticks % 3) + 1);
+  return <span className="text-secondary" style={{ width: 16, display: 'inline-block' }}>{dots}</span>;
+}

@@ -7,10 +7,10 @@ export default async function ChatPage() {
   const session = await auth();
 
   return (
-    <main className="flex min-h-svh w-full flex-col bg-gray-950 text-gray-100">
+    <main className="flex w-[100vw] bg-surface-0 text-light h-full">
       <ModelConfigGate>
-        <div className="flex flex-col flex-1">
-          <ChatClient user={session?.user} />
+        <div className="flex h-full w-full">
+          <ChatClient user={session?.user as any} />
           <DataDirectoryModal />
         </div>
       </ModelConfigGate>
