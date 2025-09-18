@@ -1,0 +1,323 @@
+/* Base backgrounds */
+.bg-surface-0 {
+	background-color: #0a0b0e !important;
+}
+
+.bg-surface-a10,
+.bg-surface-100 {
+	background-color: #151821 !important; /* Sidebar panel background */
+}
+
+.bg-surface-200,
+.bg-surface-a20 {
+	background-color: #1f2430 !important; /* Field background */
+}
+
+.bg-surface-300,
+.bg-surface-a30 {
+	background-color: #293041 !important; /* Hover/pressed */
+}
+
+.bg-surface-400,
+.bg-surface-a40 {
+	background-color: #343a4c !important; /* Dividers */
+}
+
+.bg-surface-500,
+.bg-surface-a50 {
+	background-color: #6b7280 !important;
+}
+
+/* Primary colors */
+.bg-primary,
+.bg-primary-a0 {
+	background-color: #3b82f6 !important;
+}
+
+.bg-primary-a10,
+.bg-primary-100 {
+	background-color: #2563eb !important;
+}
+
+.bg-primary-a20,
+.bg-primary-200 {
+	background-color: #1d4ed8 !important;
+}
+
+.bg-primary-300,
+.bg-primary-a30 {
+	background-color: #60a5fa !important;
+}
+
+.bg-primary-400,
+.bg-primary-a40 {
+	background-color: #93c5fd !important;
+}
+
+/* Hover states */
+.hover\:bg-primary:hover {
+	background-color: #2563eb !important;
+}
+
+.hover\:bg-primary-a10:hover {
+	background-color: #1d4ed8 !important;
+}
+
+.hover\:bg-primary-a20:hover {
+	background-color: #1e40af !important;
+}
+
+.hover\:bg-surface-200:hover,
+.hover\:bg-surface-a20:hover {
+	background-color: #363a48 !important;
+}
+
+.hover\:bg-surface-300:hover,
+.hover\:bg-surface-a30:hover {
+	background-color: #4a4f60 !important;
+}
+
+.hover\:bg-surface-400:hover,
+.hover\:bg-surface-a40:hover {
+	background-color: #6b7280 !important;
+}
+
+/* Border colors - darker for better integration */
+.border,
+.border-surface-200 {
+	border-color: #1a1b20 !important;
+}
+
+.border-surface-300 {
+	border-color: #25272f !important;
+}
+
+.border-surface-400,
+.border-surface-a40 {
+	border-color: #2d3039 !important;
+}
+
+/* Fix white borders on buttons and inputs */
+button.border,
+input.border,
+select.border,
+textarea.border,
+.rounded-md.border,
+.rounded-lg.border,
+.rounded-xl.border {
+	border-color: #25272f !important;
+}
+
+.border-primary-a20 {
+	border-color: #1d4ed8 !important;
+}
+
+.border-primary-300 {
+	border-color: #2563eb !important;
+}
+
+.border-primary-400 {
+	border-color: #3b82f6 !important;
+}
+
+/* Text colors */
+.text-primary {
+	color: #3b82f6 !important;
+}
+
+.text-primary-300 {
+	color: #60a5fa !important;
+}
+
+.text-primary-400 {
+	color: #93c5fd !important;
+}
+
+.text-surface-200 {
+	color: #e5e7eb !important;
+}
+
+.text-surface-100 {
+	color: #f3f4f6 !important;
+}
+
+/* Input area */
+textarea {
+	background-color: #1e2028 !important;
+	color: #f9fafb !important;
+	border-color: #2d3039 !important;
+}
+
+/* Buttons */
+button {
+	transition: all 0.2s ease;
+}
+
+button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* Dropdown menus */
+select option {
+	background-color: #1e2028 !important;
+	color: #f9fafb !important;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+::-webkit-scrollbar-track {
+	background: #0a0b0e;
+}
+
+::-webkit-scrollbar-thumb {
+	background: #4a4f60;
+	border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: #6b7280;
+}
+
+/* Focus states */
+.focus\:border-primary-400:focus {
+	border-color: #93c5fd !important;
+}
+
+.focus\:ring-primary-400:focus {
+	--tw-ring-color: #93c5fd !important;
+}
+
+/* Preset cards in sidebar - removed, handled above */
+
+/* Selected preset */
+.bg-surface-200 {
+	background-color: #2a2d38 !important;
+}
+
+/* Chat messages */
+.prose {
+	color: #f9fafb !important;
+}
+
+.prose code {
+	background-color: #2a2d38 !important;
+	color: #60a5fa !important;
+}
+
+.prose pre {
+	background-color: #1e2028 !important;
+}
+
+/* Loading spinner */
+.animate-spin {
+	color: #3b82f6 !important;
+}
+
+/* Error messages */
+.text-red-400 {
+	color: #f87171 !important;
+}
+
+.bg-red-500 {
+	background-color: #ef4444 !important;
+}
+
+/* Success messages */
+.text-green-400 {
+	color: #4ade80 !important;
+}
+
+.bg-green-500 {
+	background-color: #22c55e !important;
+}
+
+/* Warning messages */
+.text-yellow-400 {
+	color: #facc15 !important;
+}
+
+.bg-yellow-500 {
+	background-color: #eab308 !important;
+}
+
+/* Interactive glow effect */
+.interactive-glow {
+	transition: all 0.2s ease;
+}
+
+.interactive-glow:hover {
+	box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+}
+
+/* Ensure all text is readable */
+body {
+	color: #f9fafb !important;
+	background-color: #0a0b0e !important;
+}
+
+/* Fix any remaining white backgrounds */
+.bg-white {
+	background-color: #1e2028 !important;
+}
+
+/* Fix any remaining gray backgrounds */
+.bg-gray-50 {
+	background-color: #1e2028 !important;
+}
+
+.bg-gray-100 {
+	background-color: #2a2d38 !important;
+}
+
+.bg-gray-200 {
+	background-color: #363a48 !important;
+}
+
+.bg-gray-700 {
+	background-color: #2a2d38 !important;
+}
+
+.bg-gray-800 {
+	background-color: #1e2028 !important;
+}
+
+.bg-gray-900 {
+	background-color: #0a0b0e !important;
+}
+
+.bg-gray-950 {
+	background-color: #0a0b0e !important;
+}
+
+/* Force all borders to be dark */
+* {
+	border-color: #25272f !important;
+}
+
+/* Override specific border utilities */
+[class*="border-white"] {
+	border-color: #25272f !important;
+}
+
+[class*="border-gray"] {
+	border-color: #25272f !important;
+}
+
+/* Keep primary borders blue */
+[class*="border-primary"],
+.border-primary-a20,
+.border-primary-300,
+.border-primary-400 {
+	border-color: #2563eb !important;
+}
+
+/* Focus states should have subtle blue */
+*:focus {
+	border-color: #2563eb !important;
+	outline: none !important;
+}
