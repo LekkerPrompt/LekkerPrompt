@@ -3,25 +3,37 @@ import { readLocalModelConfig, validateLocalModelConnection } from '@/server/loc
 
 export async function GET() {
   try {
+    console.log('[api/model/validate] Validating model connection');
     const cfg = await readLocalModelConfig();
-    const result = await validateLocalModelConnection(cfg);
-    return NextResponse.json({ config: cfg, ...result });
-  } catch (error: any) {
-    // Handle data directory not configured error
-    if (error?.message?.includes('Data directory not configured') || error?.message?.includes('Database location not configured')) {
+    
+    if (!cfg) {
+      console.log('[api/model/validate] No model configuration found');
       return NextResponse.json({ 
         ok: false, 
-        error: 'Data directory not configured',
-        config: null 
-      }, { status: 400 });
+        error: 'not-configured', 
+        config: null,
+        message: 'Model is not configured. Please configure a model first.' 
+      });
     }
     
-    // Handle other errors
-    console.error('[api/model/validate] failed', error);
+    console.log(`[api/model/validate] Validating connection for ${cfg.provider} model: ${cfg.model}`);
+    const result = await validateLocalModelConnection(cfg);
+    console.log('[api/model/validate] Validation result:', result);
+    
+    return NextResponse.json({ 
+      config: cfg, 
+      ...result,
+      message: result.ok ? 'Connection successful' : `Connection failed: ${result.error}`
+    });
+  } catch (error: any) {
+    const message = error?.message || 'internal';
+    
+    console.error('[api/model/validate] Validation failed', error);
     return NextResponse.json({ 
       ok: false, 
-      error: error?.message || 'Validation failed',
-      config: null 
+      error: message, 
+      config: null,
+      message: `Validation error: ${message}`
     }, { status: 500 });
   }
 }

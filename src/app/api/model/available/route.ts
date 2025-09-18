@@ -9,19 +9,18 @@ export async function GET(request: Request) {
     const cfg = await readLocalModelConfig();
     
     // Use custom baseUrl if provided, otherwise use config or default
-    const baseUrl = customBaseUrl || cfg?.baseUrl || 'http://localhost:11434';
+    const baseUrl = customBaseUrl || (cfg && cfg.baseUrl) || 'http://localhost:11434';
     
+    // Improve UX: if not configured and no custom base URL provided,
+    // probe the default local Ollama URL instead of returning not-configured.
     if (!cfg && !customBaseUrl) {
-      return NextResponse.json({ 
-        current: null, 
-        available: [],
-        error: 'not-configured' 
-      });
+      console.warn('[api/model/available] No saved model config. Probing default Ollama at', baseUrl);
     }
 
     // Get available models from Ollama
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+    const timeoutMs = 8000;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     
     try {
       const res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/tags`, { 
@@ -38,9 +37,12 @@ export async function GET(request: Request) {
       }
       
       const data = await res.json();
+      console.log('[api/model/available] Ollama response:', JSON.stringify(data));
+      
+      // Extract model names from Ollama API response (handle different response formats)
       const gemmaModels = data.models
-        ?.filter((m: any) => m?.name?.startsWith('gemma3:'))
-        ?.map((m: any) => m.name) || [];
+        ?.map((m: any) => m?.name || m?.id || null)
+        ?.filter((name: string | null) => name && name.toLowerCase().startsWith('gemma3:')) || [];
       
       return NextResponse.json({ 
         current: cfg?.model || null, 
@@ -48,17 +50,18 @@ export async function GET(request: Request) {
       });
     } catch (e: any) {
       clearTimeout(timeout);
+      console.warn('[api/model/available] Failed to reach Ollama at', baseUrl, e?.name || e?.message || e);
       return NextResponse.json({ 
         current: cfg?.model || null, 
         available: [],
         error: e?.name === 'AbortError' ? 'timeout' : 'unreachable' 
       });
     }
-  } catch (err) {
+  } catch (err: any) {
     return NextResponse.json({ 
       current: null, 
       available: [],
-      error: 'internal' 
+      error: err?.message || 'internal' 
     }, { status: 500 });
   }
 }
