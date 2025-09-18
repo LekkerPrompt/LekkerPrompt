@@ -1,5 +1,6 @@
 import { JSONStore } from './json-store';
 import { VectorStore } from './vector-store';
+import crypto from 'crypto';
 
 // Data models
 export interface User {
@@ -24,7 +25,6 @@ export interface PromptPreset {
   id: string;
   userId: string;
   name: string;
-  mode: string;
   taskType: string;
   options: any;
   createdAt: Date;
@@ -45,16 +45,9 @@ export interface ChatMessage {
   role: string;
   content: string;
   createdAt: Date;
-  userFeedback?: 'like' | 'dislike';
+  userFeedback?: 'like' | 'dislike' | undefined;
 }
 
-export interface Post {
-  id: string;
-  name: string;
-  createdAt: Date;
-  updatedAt: Date;
-  createdById: string;
-}
 
 // Storage instances (users are in-memory only; no users.json persisted)
 const inMemoryUsers = new Map<string, User>();
@@ -62,7 +55,9 @@ const appSettingStore = new JSONStore<AppSetting>('app-settings');
 const promptPresetStore = new JSONStore<PromptPreset>('prompt-presets');
 const chatStore = new JSONStore<Chat>('chats');
 const chatMessageStore = new JSONStore<ChatMessage>('chat-messages');
-const postStore = new JSONStore<Post>('posts');
+
+// Repair corrupted app-settings.json file on initialization
+appSettingStore.repairCorruptedFile().catch(console.error);
 
 // Vector stores for RAG functionality
 const promptVectorStore = new VectorStore('prompts');
@@ -107,15 +102,21 @@ export class DataLayer {
 
   // App Settings operations
   async findAppSetting(key: string): Promise<AppSetting | null> {
+    console.log(`[data-layer] Finding app setting: ${key}`);
     const settings = await appSettingStore.findMany(setting => setting.key === key);
+    console.log(`[data-layer] Found setting for ${key}:`, settings[0] || null);
     return settings[0] || null;
   }
 
   async findManyAppSettings(keys: string[]): Promise<AppSetting[]> {
-    return await appSettingStore.findMany(setting => keys.includes(setting.key));
+    console.log(`[data-layer] Finding multiple app settings:`, keys);
+    const results = await appSettingStore.findMany(setting => keys.includes(setting.key));
+    console.log(`[data-layer] Found ${results.length} settings`);
+    return results;
   }
 
   async upsertAppSetting(key: string, value: string | null): Promise<AppSetting> {
+    console.log(`[data-layer] Upserting app setting: ${key} = ${value}`);
     const existing = await this.findAppSetting(key);
     const now = new Date();
     
@@ -127,7 +128,9 @@ export class DataLayer {
       updatedAt: now,
     };
     
+    console.log(`[data-layer] Upserting setting with id: ${setting.id}`);
     await appSettingStore.upsert(setting.id, setting);
+    console.log(`[data-layer] Successfully upserted setting: ${key}`);
     return setting;
   }
 
@@ -227,7 +230,7 @@ export class DataLayer {
       for (const msgData of messages) {
         const message: ChatMessage = {
           ...msgData,
-          id: `msg-${Date.now()}-${Math.random()}`,
+          id: crypto.randomUUID(),
           createdAt: now,
         };
         
@@ -261,12 +264,66 @@ export class DataLayer {
     }
   }
 
+  // Atomically append messages to a chat and trim to cap within a single critical section on the messages store
+  async appendMessagesWithCap(chatId: string, messages: Array<Omit<ChatMessage, 'id' | 'createdAt' | 'chatId'>>, cap: number): Promise<{ created: ChatMessage[]; deletedIds: string[] }> {
+    const now = new Date();
+    const created: ChatMessage[] = [];
+    const deletedIds: string[] = [];
+    // Perform all message mutations under a single file lock to avoid races
+    await (chatMessageStore as any).mutate(async (store: any) => {
+      // Append
+      for (const msgData of messages) {
+        const message: ChatMessage = {
+          id: crypto.randomUUID(),
+          chatId,
+          role: msgData.role,
+          content: msgData.content,
+          userFeedback: msgData.userFeedback,
+          createdAt: now,
+        };
+        store.data[message.id] = message as any;
+        created.push(message);
+      }
+      // Enforce cap by trimming oldest
+      const all = Object.entries(store.data)
+        .map(([id, m]: [string, any]) => ({ ...(m as any), id }))
+        .filter((m: any) => m.chatId === chatId)
+        .sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      const over = all.length - cap;
+      if (over > 0) {
+        const toRemove = all.slice(0, over);
+        for (const m of toRemove) {
+          delete store.data[m.id];
+          deletedIds.push(m.id);
+        }
+      }
+    });
+    // Post-mutation: update chat timestamp (separate file, best-effort)
+    await this.updateChat(chatId, { updatedAt: new Date() });
+    // Update vector store outside the lock, best-effort
+    for (const m of created) {
+      try {
+        await chatVectorStore.add(
+          m.content,
+          { messageId: m.id, chatId: m.chatId, role: m.role, timestamp: now.getTime() },
+          m.id,
+        );
+      } catch (vectorError) {
+        console.error(`Failed to add message ${m.id} to vector store:`, vectorError);
+      }
+    }
+    for (const id of deletedIds) {
+      try { await chatVectorStore.delete(id); } catch (e) { /* ignore */ }
+    }
+    return { created, deletedIds };
+  }
+
   async findChatMessages(chatId: string, limit: number = 50): Promise<ChatMessage[]> {
     try {
       const messages = await chatMessageStore.findMany(msg => msg.chatId === chatId);
       const sorted = messages
         .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-        .slice(0, limit);
+        .slice(-limit);
       
       console.log(`Found ${sorted.length} messages for chat ${chatId}`);
       return sorted;
@@ -304,35 +361,122 @@ export class DataLayer {
   }
 
   async setMessageFeedback(messageId: string, feedback: 'like' | 'dislike'): Promise<boolean> {
-    const message = await chatMessageStore.findById(messageId);
-    if (!message) return false;
-    
-    await chatMessageStore.update(messageId, { userFeedback: feedback });
-    
-    // Don't fail if vector store update fails
     try {
-      await chatVectorStore.setUserFeedback(messageId, feedback);
-    } catch (vectorError) {
-      console.error(`Failed to update feedback in vector store for message ${messageId}:`, vectorError);
+      console.log(`[data-layer] Setting message feedback: ${messageId}, ${feedback}`);
+      
+      // First check if the message exists
+      const message = await chatMessageStore.findById(messageId);
+      if (!message) {
+        console.log(`[data-layer] Message not found for feedback: ${messageId}`);
+        return false;
+      }
+      
+      // Update in the message store
+      try {
+        console.log(`[data-layer] Updating message store with feedback`);
+        await chatMessageStore.update(messageId, { userFeedback: feedback });
+      } catch (storeError) {
+        console.error(`[data-layer] Failed to update message store with feedback:`, storeError);
+        return false;
+      }
+      
+      // Update in vector store (but don't fail if this part fails)
+      try {
+        console.log(`[data-layer] Updating vector store with feedback`);
+        await chatVectorStore.setUserFeedback(messageId, feedback);
+      } catch (vectorError) {
+        console.error(`[data-layer] Failed to update feedback in vector store:`, vectorError);
+        // Continue without failing the operation
+      }
+      
+      console.log(`[data-layer] Successfully set feedback for message: ${messageId}`);
+      return true;
+    } catch (error) {
+      console.error(`[data-layer] Unexpected error in setMessageFeedback:`, error);
+      return false;
     }
-    
-    return true;
   }
 
   async removeMessageFeedback(messageId: string): Promise<boolean> {
-    const message = await chatMessageStore.findById(messageId);
-    if (!message) return false;
-    
-    await chatMessageStore.update(messageId, { userFeedback: undefined });
-    
-    // Don't fail if vector store update fails
     try {
-      await chatVectorStore.removeUserFeedback(messageId);
-    } catch (vectorError) {
-      console.error(`Failed to remove feedback from vector store for message ${messageId}:`, vectorError);
+      console.log(`[data-layer] Removing message feedback: ${messageId}`);
+      
+      // First check if the message exists
+      const message = await chatMessageStore.findById(messageId);
+      if (!message) {
+        console.log(`[data-layer] Message not found for removing feedback: ${messageId}`);
+        return false;
+      }
+      
+      // Update in the message store
+      try {
+        console.log(`[data-layer] Updating message store to remove feedback`);
+        await chatMessageStore.update(messageId, { userFeedback: undefined });
+      } catch (storeError) {
+        console.error(`[data-layer] Failed to remove feedback from message store:`, storeError);
+        return false;
+      }
+      
+      // Update in vector store (but don't fail if this part fails)
+      try {
+        console.log(`[data-layer] Updating vector store to remove feedback`);
+        await chatVectorStore.removeUserFeedback(messageId);
+      } catch (vectorError) {
+        console.error(`[data-layer] Failed to remove feedback from vector store:`, vectorError);
+        // Continue without failing the operation
+      }
+      
+      console.log(`[data-layer] Successfully removed feedback for message: ${messageId}`);
+      return true;
+    } catch (error) {
+      console.error(`[data-layer] Unexpected error in removeMessageFeedback:`, error);
+      return false;
     }
-    
-    return true;
+  }
+
+  async getAllMessagesWithFeedback(): Promise<ChatMessage[]> {
+    try {
+      const allMessages = await chatMessageStore.findMany();
+      return allMessages.filter(m => m.userFeedback === 'like' || m.userFeedback === 'dislike');
+    } catch (error) {
+      console.error(`[data-layer] Error getting messages with feedback:`, error);
+      return [];
+    }
+  }
+
+  async resetAllMessageFeedback(): Promise<boolean> {
+    try {
+      console.log(`[data-layer] Resetting all message feedback`);
+      
+      // Get all messages with feedback
+      const allMessages = await chatMessageStore.findMany();
+      const messagesWithFeedback = allMessages.filter(m => m.userFeedback);
+      
+      console.log(`[data-layer] Found ${messagesWithFeedback.length} messages with feedback to reset`);
+      
+      // Remove feedback from all messages
+      for (const message of messagesWithFeedback) {
+        try {
+          await chatMessageStore.update(message.id, { userFeedback: undefined });
+        } catch (error) {
+          console.error(`[data-layer] Failed to reset feedback for message ${message.id}:`, error);
+        }
+      }
+      
+      // Reset vector store feedback data completely
+      try {
+        await chatVectorStore.resetAllFeedback();
+      } catch (vectorError) {
+        console.error(`[data-layer] Failed to reset vector store feedback:`, vectorError);
+        // Continue without failing the operation
+      }
+      
+      console.log(`[data-layer] Successfully reset all message feedback`);
+      return true;
+    } catch (error) {
+      console.error(`[data-layer] Unexpected error in resetAllMessageFeedback:`, error);
+      return false;
+    }
   }
 
   // RAG operations for personalized responses
@@ -442,22 +586,6 @@ export class DataLayer {
     return await promptPresetStore.delete(id);
   }
 
-  // Post operations (if needed)
-  async createPost(data: Omit<Post, 'id' | 'createdAt' | 'updatedAt'>): Promise<Post> {
-    const now = new Date();
-    const post: Post = {
-      ...data,
-      id: `post-${Date.now()}`,
-      createdAt: now,
-      updatedAt: now,
-    };
-    await postStore.upsert(post.id, post);
-    return post;
-  }
-
-  async findPostsByName(name: string): Promise<Post[]> {
-    return await postStore.findMany(post => post.name.includes(name));
-  }
 
   // Initialize with default local user
   async ensureLocalUser(): Promise<User> {
@@ -519,11 +647,5 @@ export const db = {
       dataLayer.countChatMessages(where.chatId),
     deleteMany: ({ where }: { where: { id: { in: string[] } } }) =>
       dataLayer.deleteChatMessages(where.id.in),
-  },
-  post: {
-    create: ({ data }: { data: Omit<Post, 'id' | 'createdAt' | 'updatedAt'> }) =>
-      dataLayer.createPost(data),
-    findMany: ({ where }: any) => 
-      where?.name ? dataLayer.findPostsByName(where.name) : [],
   },
 };

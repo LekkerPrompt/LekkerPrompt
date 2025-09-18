@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import { resolveDataDir } from './data-path';
+import { logger } from '../logging';
 
 export interface VectorDocument {
   id: string;
@@ -21,6 +22,9 @@ export class VectorStore {
   private filePath: string;
   private documents: VectorDocument[] = [];
   private loaded = false;
+  private embeddingCache = new Map<string, number[]>();
+  private searchIndex: Map<string, number[]> = new Map(); // word -> documents containing it
+  private lastIndexUpdate = 0;
 
   constructor(storeName: string, dataDir?: string) {
   const baseDir = resolveDataDir(dataDir);
@@ -32,7 +36,14 @@ export class VectorStore {
     
     try {
       const content = await fs.readFile(this.filePath, 'utf-8');
-      this.documents = JSON.parse(content);
+      const parsed = JSON.parse(content);
+      // Repair: ensure array shape; handle null or object files
+      if (!Array.isArray(parsed)) {
+        this.documents = [];
+      } else {
+        // Validate minimal structure for each entry; drop malformed
+        this.documents = parsed.filter((d: any) => d && typeof d.id === 'string' && typeof d.content === 'string' && Array.isArray(d.embedding));
+      }
     } catch {
       this.documents = [];
     }
@@ -45,26 +56,37 @@ export class VectorStore {
     await fs.writeFile(this.filePath, JSON.stringify(this.documents, null, 2));
   }
 
-  // Simple but effective text embedding using TF-IDF style approach
+  // Optimized text embedding with caching
   private createEmbedding(text: string): number[] {
-    const words = text.toLowerCase().split(/\W+/).filter(w => w.length > 0);
+    // Check cache first
+    const cacheKey = crypto.createHash('md5').update(text).digest('hex');
+    const cached = this.embeddingCache.get(cacheKey);
+    if (cached) {
+      return [...cached]; // Return copy to prevent mutations
+    }
+
+    const words = text.toLowerCase().split(/\W+/).filter(w => w.length > 2 && w.length < 50); // Filter out very short/long words
     const vector = new Array(256).fill(0);
-    
-    // Create word frequency map
+
+    // Create word frequency map with stop word filtering
+    const stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by']);
     const wordFreq = new Map<string, number>();
+
     words.forEach(word => {
-      wordFreq.set(word, (wordFreq.get(word) || 0) + 1);
+      if (!stopWords.has(word)) {
+        wordFreq.set(word, (wordFreq.get(word) || 0) + 1);
+      }
     });
-    
+
     // Convert words to hash positions and populate vector
     wordFreq.forEach((freq, word) => {
       const hash = crypto.createHash('sha256').update(word).digest();
-      for (let i = 0; i < hash.length && i < 32; i++) {
+      for (let i = 0; i < Math.min(hash.length, 16); i++) { // Use fewer hash bytes for speed
         const pos = hash[i]! % vector.length;
         vector[pos] += freq / words.length; // normalize by document length
       }
     });
-    
+
     // Normalize vector
     const magnitude = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0));
     if (magnitude > 0) {
@@ -72,8 +94,78 @@ export class VectorStore {
         vector[i] /= magnitude;
       }
     }
-    
+
+    // Cache the result (limit cache size)
+    if (this.embeddingCache.size < 10000) { // Limit cache to 10k entries
+      this.embeddingCache.set(cacheKey, [...vector]);
+    }
+
     return vector;
+  }
+
+  // Build search index for faster lookups
+  private buildSearchIndex(): void {
+    this.searchIndex.clear();
+
+    this.documents.forEach((doc, index) => {
+      const words = doc.content.toLowerCase().split(/\W+/).filter(w => w.length > 2);
+
+      words.forEach(word => {
+        if (!this.searchIndex.has(word)) {
+          this.searchIndex.set(word, []);
+        }
+        const indices = this.searchIndex.get(word)!;
+        if (!indices.includes(index)) {
+          indices.push(index);
+        }
+      });
+    });
+
+    this.lastIndexUpdate = Date.now();
+  }
+
+  // Get candidate documents using inverted index
+  private getCandidateDocuments(query: string): number[] {
+    const queryWords = query.toLowerCase().split(/\W+/).filter(w => w.length > 2);
+    const candidateSets: Set<number>[] = [];
+
+    queryWords.forEach(word => {
+      const indices = this.searchIndex.get(word);
+      if (indices) {
+        candidateSets.push(new Set(indices));
+      }
+    });
+
+    if (candidateSets.length === 0) {
+      // If no matches in index, fall back to all documents
+      return this.documents.map((_, index) => index);
+    }
+
+    // Find intersection of all candidate sets
+    const result = new Set<number>();
+    const firstSet = candidateSets[0];
+
+    if (firstSet) {
+      firstSet.forEach(index => {
+        let include = true;
+        for (let i = 1; i < candidateSets.length; i++) {
+          if (!candidateSets[i]?.has(index)) {
+            include = false;
+            break;
+          }
+        }
+        if (include) {
+          result.add(index);
+        }
+      });
+    }
+
+    // If too few candidates, expand search
+    if (result.size < 10) {
+      return this.documents.map((_, index) => index);
+    }
+
+    return Array.from(result);
   }
 
   private cosineSimilarity(a: number[], b: number[]): number {
@@ -87,49 +179,75 @@ export class VectorStore {
 
   async add(content: string, metadata: Record<string, any> = {}, customId?: string): Promise<string> {
     await this.load();
-    
+
     const id = customId || crypto.createHash('sha256')
       .update(content + Date.now())
       .digest('hex')
       .substring(0, 16);
-    
+
     const embedding = this.createEmbedding(content);
-    
-  const document: VectorDocument = { id, content, embedding, metadata, timestamp: Date.now() };
-    
+
+    const document: VectorDocument = { id, content, embedding, metadata, timestamp: Date.now() };
+
     this.documents.push(document);
     await this.save();
-    
+
+    // Update search index incrementally
+    const words = content.toLowerCase().split(/\W+/).filter(w => w.length > 2);
+    const docIndex = this.documents.length - 1;
+
+    words.forEach(word => {
+      if (!this.searchIndex.has(word)) {
+        this.searchIndex.set(word, []);
+      }
+      const indices = this.searchIndex.get(word)!;
+      if (!indices.includes(docIndex)) {
+        indices.push(docIndex);
+      }
+    });
+
     return id;
   }
 
   async search(
-    query: string, 
-    limit: number = 5, 
+    query: string,
+    limit: number = 5,
     filters?: {
       userFeedback?: 'like' | 'dislike';
       metadata?: Record<string, any>;
     }
   ): Promise<SearchResult[]> {
     await this.load();
-    
-    const queryEmbedding = this.createEmbedding(query);
-    
-    let candidates = this.documents;
-    
+
+    // Rebuild index if it's stale (older than 5 minutes) or empty
+    if (this.searchIndex.size === 0 || (Date.now() - this.lastIndexUpdate) > 300000) {
+      this.buildSearchIndex();
+    }
+
+    // Get candidate documents using inverted index
+    const candidateIndices = this.getCandidateDocuments(query);
+    let candidates = candidateIndices.map(index => this.documents[index]).filter((doc): doc is VectorDocument => doc !== undefined);
+
     // Apply filters
     if (filters?.userFeedback) {
       candidates = candidates.filter(doc => doc.userFeedback === filters.userFeedback);
     }
-    
+
     if (filters?.metadata) {
       candidates = candidates.filter(doc => {
-        return Object.entries(filters.metadata!).every(([key, value]) => 
+        return Object.entries(filters.metadata!).every(([key, value]) =>
           doc.metadata[key] === value
         );
       });
     }
-    
+
+    // If no candidates found through index, fall back to full search
+    if (candidates.length === 0) {
+      candidates = this.documents;
+    }
+
+    const queryEmbedding = this.createEmbedding(query);
+
     const results = candidates
       .map(doc => ({
         document: doc,
@@ -138,7 +256,7 @@ export class VectorStore {
       .filter(result => result.score > 0.1) // Filter out very low similarity
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
-    
+
     return results;
   }
 
@@ -148,33 +266,51 @@ export class VectorStore {
   }
 
   async setUserFeedback(id: string, feedback: 'like' | 'dislike'): Promise<boolean> {
-    await this.load();
-    const docIndex = this.documents.findIndex(doc => doc.id === id);
-    
-    if (docIndex === -1) return false;
-    
-    const doc = this.documents[docIndex];
-    if (doc) {
-      doc.userFeedback = feedback;
+    try {
+      await this.load();
+      const docIndex = this.documents.findIndex(doc => doc.id === id);
+      
+      if (docIndex === -1) {
+        logger.debug('VectorStore document not found for feedback', { documentId: id });
+        return false;
+      }
+      
+      const doc = this.documents[docIndex];
+      if (doc) {
+        doc.userFeedback = feedback;
+        logger.debug('VectorStore set feedback for document', { documentId: id, feedback });
+        await this.save();
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error(`VectorStore: Error setting user feedback:`, error);
+      return false; // Don't throw, return false to indicate failure
     }
-    await this.save();
-    
-    return true;
   }
 
   async removeUserFeedback(id: string): Promise<boolean> {
-    await this.load();
-    const docIndex = this.documents.findIndex(doc => doc.id === id);
-    
-    if (docIndex === -1) return false;
-    
-    const doc = this.documents[docIndex];
-    if (doc) {
-      delete doc.userFeedback;
+    try {
+      await this.load();
+      const docIndex = this.documents.findIndex(doc => doc.id === id);
+      
+      if (docIndex === -1) {
+        logger.debug('VectorStore document not found for removing feedback', { documentId: id });
+        return false;
+      }
+      
+      const doc = this.documents[docIndex];
+      if (doc) {
+        delete doc.userFeedback;
+        logger.debug('VectorStore removed feedback for document', { documentId: id });
+        await this.save();
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error(`VectorStore: Error removing user feedback:`, error);
+      return false; // Don't throw, return false to indicate failure
     }
-    await this.save();
-    
-    return true;
   }
 
   async getLikedPrompts(): Promise<VectorDocument[]> {
@@ -249,5 +385,14 @@ export class VectorStore {
       dislikedCount: this.documents.filter(doc => doc.userFeedback === 'dislike').length,
       neutralCount: this.documents.filter(doc => !doc.userFeedback).length,
     };
+  }
+
+  async resetAllFeedback(): Promise<void> {
+    await this.load();
+    
+    // Remove ALL documents - complete reset of the learning environment
+    this.documents = [];
+    
+    await this.save();
   }
 }
